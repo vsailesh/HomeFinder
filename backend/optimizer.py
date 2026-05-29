@@ -212,7 +212,16 @@ def optimize_search(specs: SearchSpecs) -> dict:
     if not properties:
         return {
             "deals": [],
-            "market_stats": MarketStats(area_name=specs.city or specs.county or specs.state or "Maryland").model_dump(),
+            "market_stats": MarketStats(
+                area_name=specs.city or specs.county or specs.state or "Maryland",
+                median_price=0,
+                avg_price_per_sqft=0,
+                median_days_on_market=0,
+                total_listings=0,
+                avg_year_built=1990,
+                price_trend_30d=0,
+                inventory_change_30d=0,
+            ).model_dump(),
             "total_results": 0,
             "search_specs": specs.model_dump(),
             "message": "No properties found matching your criteria."

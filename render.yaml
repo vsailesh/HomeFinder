@@ -1,0 +1,16 @@
+# Render Blueprint — deploys the FastAPI backend (free tier).
+# Frontend is deployed separately on Vercel (set BACKEND_URL there to this service URL).
+services:
+  - type: web
+    name: home-finder-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      # Optional: real Zillow data. Leave unset to use the mock generator.
+      - key: RAPIDAPI_KEY
+        sync: false

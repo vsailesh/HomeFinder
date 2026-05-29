@@ -160,16 +160,129 @@ def _price_for_property(base_sqft_price: float, sqft: int, bedrooms: int,
 
 
 def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
-    """Fetch realtime listings from RapidAPI Zillow."""
+    """Fetch realtime listings from RapidAPI Zillow, falling back to a
+    realistic mock generator when no API key is configured or the API
+    returns nothing (keeps the UI populated for demo/dev)."""
     print("Fetching realtime listings from Zillow via RapidAPI...")
     live_props = fetch_rapidapi_properties(specs, limit=max(count, 50))
     if live_props and len(live_props) > 0:
         print(f"Successfully scraped {len(live_props)} properties realtime.")
         return live_props
-    else:
-        print("API returned empty results or failed.")
-        
-    return []
+
+    print("API returned empty/failed — using mock listing generator.")
+    return generate_mock_listings(specs, count=count)
+
+
+def _pick_city(specs: SearchSpecs) -> str:
+    """Resolve the search to a known city in MARKET_DATA."""
+    if specs.city:
+        for name in MARKET_DATA:
+            if specs.city.lower() in name.lower() or name.lower() in specs.city.lower():
+                return name
+    if specs.zip_code:
+        for name, data in MARKET_DATA.items():
+            if specs.zip_code in data["zip_codes"]:
+                return name
+    # default: pick a city in the requested state, else Baltimore
+    if specs.state:
+        for name, data in MARKET_DATA.items():
+            if data["state"].lower() == specs.state.lower():
+                return name
+    return "Baltimore"
+
+
+def generate_mock_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
+    """Generate realistic mock listings honoring the main search filters."""
+    city = _pick_city(specs)
+    data = MARKET_DATA[city]
+    base_ppsf = data["median_sqft_price"]
+
+    conditions = [
+        PropertyCondition.EXCELLENT, PropertyCondition.GOOD,
+        PropertyCondition.GOOD, PropertyCondition.FAIR, PropertyCondition.POOR,
+    ]
+    ptypes = list(specs.property_types) if specs.property_types else [
+        PropertyType.SINGLE_FAMILY, PropertyType.SINGLE_FAMILY,
+        PropertyType.TOWNHOUSE, PropertyType.CONDO,
+    ]
+
+    out: List[Property] = []
+    attempts = 0
+    while len(out) < count and attempts < count * 6:
+        attempts += 1
+        bedrooms = random.randint(2, 6)
+        bathrooms = round(random.uniform(1, 4) * 2) / 2
+        sqft = random.randint(900, 4500)
+        year_built = random.randint(1920, 2025)
+        has_pool = random.random() < 0.18
+        has_basement = random.random() < 0.55
+        has_garage = random.random() < 0.7
+        condition = random.choice(conditions)
+        lot_sqft = random.randint(2000, 30000)
+
+        price = _price_for_property(
+            base_ppsf, sqft, bedrooms, bathrooms, year_built,
+            has_pool, has_basement, has_garage, condition, lot_sqft,
+        )
+
+        # Apply spec filters
+        if specs.min_price and price < specs.min_price:
+            continue
+        if specs.max_price and price > specs.max_price:
+            continue
+        if specs.min_bedrooms and bedrooms < specs.min_bedrooms:
+            continue
+        if specs.max_bedrooms and bedrooms > specs.max_bedrooms:
+            continue
+        if specs.min_bathrooms and bathrooms < specs.min_bathrooms:
+            continue
+        if specs.min_sqft and sqft < specs.min_sqft:
+            continue
+        if specs.max_sqft and sqft > specs.max_sqft:
+            continue
+        if specs.must_have_pool and not has_pool:
+            continue
+        if specs.must_have_basement and not has_basement:
+            continue
+        if specs.must_have_garage and not has_garage:
+            continue
+
+        address = _random_address()
+        zip_code = specs.zip_code or random.choice(data["zip_codes"])
+        days = random.randint(1, 180)
+        out.append(Property(
+            id=_generate_property_id(address + str(attempts), city),
+            address=address,
+            city=city,
+            state=data["state"],
+            zip_code=zip_code,
+            county=data["county"],
+            latitude=data["lat"] + random.uniform(-0.05, 0.05),
+            longitude=data["lng"] + random.uniform(-0.05, 0.05),
+            list_price=price,
+            property_type=random.choice(ptypes),
+            bedrooms=bedrooms,
+            bathrooms=bathrooms,
+            sqft=sqft,
+            lot_sqft=lot_sqft,
+            year_built=year_built,
+            garage_spaces=random.randint(1, 3) if has_garage else 0,
+            condition=condition,
+            has_pool=has_pool,
+            has_basement=has_basement,
+            has_garage=has_garage,
+            has_fireplace=random.random() < 0.4,
+            has_central_air=random.random() < 0.8,
+            hoa_fee=random.choice([0, 0, 0, 50, 120, 250, 400]),
+            days_on_market=days,
+            listing_date=datetime.now() - timedelta(days=days),
+            source="mock-generator",
+            url=None,
+            annual_tax=round(price * random.uniform(0.008, 0.018), 0),
+        ))
+
+    print(f"Generated {len(out)} mock listings for {city}.")
+    return out
 
 
 def get_market_sqft_price(city: str) -> float:
