@@ -1,0 +1,32 @@
+{
+  "name": "file-lister",
+  "version": "1.0.0",
+  "description": "A powerful CLI tool to list and analyze files in directories with comprehensive filtering and formatting options",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "file-lister": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "list": "node src/cli.js",
+    "test": "node src/test.js"
+  },
+  "keywords": [
+    "cli",
+    "file-system",
+    "directory",
+    "file-listing",
+    "tree",
+    "ls"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0"
+  }
+}
