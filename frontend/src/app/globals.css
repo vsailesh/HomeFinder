@@ -1945,6 +1945,18 @@ a:hover { text-decoration: underline; }
   font-size: 13px;
 }
 .mls-stats-bar strong { color: #fff; }
+.demo-badge {
+  margin-left: auto;
+  padding: 3px 10px;
+  background: #422006;
+  color: #fbbf24;
+  border: 1px solid #b45309;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: help;
+  white-space: nowrap;
+}
 .mls-error {
   padding: 12px 16px;
   background: #fef2f2;

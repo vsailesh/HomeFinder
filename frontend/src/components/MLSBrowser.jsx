@@ -66,6 +66,7 @@ export default function MLSBrowser() {
 
   const deals = results?.deals || [];
   const stats = results?.market_stats;
+  const isDemo = deals.some(d => d.property?.source === 'mock-generator');
 
   return (
     <div className="mls-browser">
@@ -138,6 +139,11 @@ export default function MLSBrowser() {
           <span>Median <strong>${stats.median_price?.toLocaleString()}</strong></span>
           <span><strong>${stats.avg_price_per_sqft?.toFixed(0)}</strong>/sqft</span>
           <span><strong>{stats.median_days_on_market}</strong>d on market</span>
+          {isDemo && (
+            <span className="demo-badge" title="Sample listings generated for demo. Connect a data source for live MLS results.">
+              ⚠️ Demo data
+            </span>
+          )}
         </div>
       )}
 
