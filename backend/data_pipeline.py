@@ -3,13 +3,39 @@ Data Pipeline for the Home Finder.
 Handles fetching property listings from multiple sources and normalizing them.
 Includes realistic mock data generator for demo/development.
 """
+import logging
 import random
 import hashlib
 import math
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from models import Property, PropertyType, PropertyCondition, SearchSpecs
 from rapidapi_zillow import fetch_rapidapi_properties
+
+logger = logging.getLogger(__name__)
+
+# ── Property Registry ─────────────────────────────────────────────────────────
+# Every listing served through fetch_live_listings is registered here so
+# /api/property/{id}/valuation can look a property up directly instead of
+# re-fetching (live listings shift between calls, which made ID scans fail).
+
+_REGISTRY_CAP = 2000
+_property_registry: "OrderedDict[str, Property]" = OrderedDict()
+
+
+def register_listings(properties: List[Property]) -> None:
+    """Store properties for later lookup by ID (most recent first)."""
+    for prop in properties:
+        _property_registry[prop.id] = prop
+        _property_registry.move_to_end(prop.id)
+    while len(_property_registry) > _REGISTRY_CAP:
+        _property_registry.popitem(last=False)
+
+
+def get_property_by_id(property_id: str) -> Optional[Property]:
+    """Return a previously served property by ID, if still registered."""
+    return _property_registry.get(property_id)
 
 # ── Realistic Market Data for Mock Generation ─────────────────────────────────
 # Based on real-world 2026 market averages
@@ -163,38 +189,56 @@ def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
     """Fetch realtime listings from RapidAPI Zillow, falling back to a
     realistic mock generator when no API key is configured or the API
     returns nothing (keeps the UI populated for demo/dev)."""
-    print("Fetching realtime listings from Zillow via RapidAPI...")
+    logger.info("Fetching realtime listings from Zillow via RapidAPI...")
     live_props = fetch_rapidapi_properties(specs, limit=max(count, 50))
     if live_props and len(live_props) > 0:
-        print(f"Successfully scraped {len(live_props)} properties realtime.")
+        logger.info("Successfully fetched %d live properties.", len(live_props))
+        register_listings(live_props)
         return live_props
 
-    print("API returned empty/failed — using mock listing generator.")
-    return generate_mock_listings(specs, count=count)
+    logger.info("API returned empty/failed — using mock listing generator.")
+    mock_props = generate_mock_listings(specs, count=count)
+    register_listings(mock_props)
+    return mock_props
 
 
-def _pick_city(specs: SearchSpecs) -> str:
-    """Resolve the search to a known city in MARKET_DATA."""
+def _pick_city(specs: SearchSpecs) -> tuple[str, dict]:
+    """Resolve the search to mock-generation market data.
+
+    Known cities (currently MD) use their real market data. Unknown cities
+    are generated under the *requested* name with a generic national-average
+    $/sqft — never silently substituted with a different city.
+    """
     if specs.city:
         for name in MARKET_DATA:
             if specs.city.lower() in name.lower() or name.lower() in specs.city.lower():
-                return name
+                return name, MARKET_DATA[name]
     if specs.zip_code:
         for name, data in MARKET_DATA.items():
             if specs.zip_code in data["zip_codes"]:
-                return name
-    # default: pick a city in the requested state, else Baltimore
+                return name, data
+    # Match by state if we have data for it
     if specs.state:
         for name, data in MARKET_DATA.items():
             if data["state"].lower() == specs.state.lower():
-                return name
-    return "Baltimore"
+                return name, data
+
+    # Unknown area: honor the requested city name, generic market constants
+    generic = {
+        "state": specs.state or "US",
+        "county": specs.county or (f"{specs.city} County" if specs.city
+                                   else "Unknown County"),
+        "median_sqft_price": 225,  # national single-family average
+        "lat": 39.5, "lng": -98.35,  # geographic center of the US
+        "zip_codes": [specs.zip_code] if specs.zip_code else ["00000"],
+        "neighborhoods": [specs.city or "Citywide"],
+    }
+    return (specs.city or "Unknown City"), generic
 
 
 def generate_mock_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
     """Generate realistic mock listings honoring the main search filters."""
-    city = _pick_city(specs)
-    data = MARKET_DATA[city]
+    city, data = _pick_city(specs)
     base_ppsf = data["median_sqft_price"]
 
     conditions = [
@@ -281,7 +325,7 @@ def generate_mock_listings(specs: SearchSpecs, count: int = 50) -> List[Property
             annual_tax=round(price * random.uniform(0.008, 0.018), 0),
         ))
 
-    print(f"Generated {len(out)} mock listings for {city}.")
+    logger.info("Generated %d mock listings for %s.", len(out), city)
     return out
 
 

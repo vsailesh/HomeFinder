@@ -3,13 +3,13 @@
 Real estate analysis tool with Python backend + Next.js frontend.
 
 ## Project Structure
-- `backend/` - Python scrapers, valuation engine, API endpoints
+- `backend/` - Data fetching, valuation engine, API endpoints
   - `main.py` - FastAPI server
-  - `zillow_scraper.py` - Zillow data extraction
-  - `redfin_scraper.py` - Redfin data extraction
+  - `rapidapi_zillow.py` - Live Zillow listings via RapidAPI
   - `valuation_engine.py` - Property valuation models
   - `optimizer.py` - Investment optimization algorithms
-  - `data_pipeline.py` - ETL pipeline for property data
+  - `data_pipeline.py` - ETL pipeline + mock generator + listings cache
+  - `loan_engine.py` - Mortgage rate/payment quotes (live FRED base rate)
 - `frontend/` - Next.js web application
   - `src/` - React components
 - `file-lister/` - File listing utility
@@ -17,7 +17,7 @@ Real estate analysis tool with Python backend + Next.js frontend.
 ## Tech Stack
 - Backend: Python 3, FastAPI
 - Frontend: Next.js, React
-- Data Sources: Zillow API, Redfin scraper, RapidAPI
+- Data Sources: RapidAPI (Zillow live listings), FRED (mortgage rates)
 
 ## Common Tasks
 - Add new property data sources

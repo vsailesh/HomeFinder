@@ -1980,3 +1980,134 @@ a:hover { text-decoration: underline; }
   display: block;
   margin-bottom: 8px;
 }
+
+/* ── Saved Searches ─────────────────────────────────────────────── */
+.saved-searches {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+}
+.saved-searches-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin-bottom: 10px;
+}
+.saved-search-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.saved-search-name-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 13px;
+}
+.saved-search-name-input:disabled {
+  opacity: 0.5;
+}
+.saved-search-error {
+  color: var(--accent-danger);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.saved-search-empty {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 13px;
+}
+.saved-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.saved-search-item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.saved-search-load {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+.saved-search-load:hover {
+  background: var(--bg-glass-hover);
+}
+.saved-search-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  white-space: nowrap;
+}
+.saved-search-item-summary {
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-search-delete {
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.saved-search-delete:hover {
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+/* ── Pagination ─────────────────────────────────────────────────── */
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 24px 0 8px;
+}
+.pagination-btn {
+  padding: 8px 18px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.pagination-btn:hover:not(:disabled) {
+  background: var(--bg-glass-hover);
+}
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pagination-info {
+  font-size: 13px;
+  color: var(--text-secondary, #94a3b8);
+}
+.pagination-info strong {
+  color: var(--text-primary, #e2e8f0);
+}

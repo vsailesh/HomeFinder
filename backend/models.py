@@ -147,8 +147,6 @@ class MarketStats(BaseModel):
     median_days_on_market: int
     total_listings: int
     avg_year_built: int
-    price_trend_30d: float  # percentage
-    inventory_change_30d: float  # percentage
 
 
 class SearchResponse(BaseModel):

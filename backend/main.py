@@ -2,15 +2,24 @@
 Home Finder & Optimizer – FastAPI Backend
 Serves property data, valuations, and optimized deal rankings.
 """
-from fastapi import FastAPI, Query
+import logging
+import os
+from datetime import datetime, timezone
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 from models import SearchSpecs, PropertyType, LoanQuoteRequest, LoanQuoteResponse
 from optimizer import optimize_search
-from data_pipeline import get_all_cities
+from data_pipeline import get_all_cities, get_property_by_id
 from valuation_engine import valuate_property
-from data_pipeline import fetch_live_listings
 from loan_engine import get_market_base_rate, quote_loan
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Home Finder & Optimizer API",
@@ -18,10 +27,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Comma-separated allowlist, e.g. ALLOWED_ORIGINS=https://app.example.com,https://other.com
+# Defaults to wildcard (no credentials — wildcard+credentials is rejected by browsers).
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "*").strip()
+_allowed_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -61,10 +75,14 @@ async def search_properties(
     must_have_garage: bool = False,
     max_days_on_market: Optional[int] = None,
     sort_by: str = "deal_score",
+    page: Optional[int] = Query(default=None, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
 ):
     """
     Search properties and get optimized deal rankings.
     Returns properties scored and ranked with full price variable breakdown.
+
+    Pass page (1-indexed) for paginated results; omit it to get everything.
     """
     property_types = None
     if property_type:
@@ -97,24 +115,30 @@ async def search_properties(
         sort_by=sort_by,
     )
 
-    results = optimize_search(specs)
+    results = optimize_search(specs, page=page, page_size=page_size)
     return results
 
 
 @app.get("/api/property/{property_id}/valuation")
 async def get_property_valuation(property_id: str):
-    """Get detailed valuation for a specific property."""
-    # Generate a batch and find the property
-    specs = SearchSpecs()
-    properties = fetch_live_listings(specs, count=100)
-    for prop in properties:
-        if prop.id == property_id:
-            val = valuate_property(prop)
-            return {
-                "property": prop.model_dump(),
-                "valuation": val.model_dump(),
-            }
-    return {"error": "Property not found"}
+    """Get detailed valuation for a specific property.
+
+    Looks the property up in the in-memory registry of previously served
+    listings (live fetches shift between calls, so re-searching for the ID
+    is unreliable). Run a search first, then request a detail valuation.
+    """
+    prop = get_property_by_id(property_id)
+    if prop is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Property not found. It may be outside the current "
+                   "search cache — run a search for its area first.",
+        )
+    val = valuate_property(prop)
+    return {
+        "property": prop.model_dump(),
+        "valuation": val.model_dump(),
+    }
 
 
 @app.get("/api/loan/rate")
@@ -152,13 +176,12 @@ async def loan_quote(req: LoanQuoteRequest):
 async def get_system_status():
     """Return system status and health information."""
     import platform
-    from datetime import datetime
 
     return {
         "status": "healthy",
         "service": "Home Finder & Optimizer API",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "system": {
             "platform": platform.system(),
             "python_version": platform.python_version(),

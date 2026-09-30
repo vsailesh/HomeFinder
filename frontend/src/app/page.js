@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import SearchForm from '../components/SearchForm';
+import SearchForm, { DEFAULT_SPECS, cleanParams } from '../components/SearchForm';
+import SavedSearches from '../components/SavedSearches';
 import PropertyCard from '../components/PropertyCard';
 import MortgageCalculator from '../components/MortgageCalculator';
 import { PriceDistributionChart, DealScoreChart, ValueVsPriceChart, SqftVsPriceScatter } from '../components/Charts';
+
+const PAGE_SIZE = 12;
 
 function formatCurrency(val) {
   if (val == null) return '—';
@@ -12,11 +15,13 @@ function formatCurrency(val) {
 }
 
 export default function HomePage() {
+  const [specs, setSpecs] = useState(DEFAULT_SPECS);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState('deal_score');
+  const [lastParams, setLastParams] = useState(null);
+  const [page, setPage] = useState(1);
 
-  const handleSearch = useCallback(async (params) => {
+  const runSearch = useCallback(async (params, pageNum = 1) => {
     setLoading(true);
     try {
       const query = new URLSearchParams();
@@ -25,10 +30,13 @@ export default function HomePage() {
           query.set(key, String(val));
         }
       });
+      query.set('page', String(pageNum));
+      query.set('page_size', String(PAGE_SIZE));
       const res = await fetch(`/api/search?${query.toString()}`);
       const data = await res.json();
       setResults(data);
-      setSortBy(params.sort_by || 'deal_score');
+      setLastParams(params);
+      setPage(pageNum);
     } catch (err) {
       console.error('Search failed:', err);
     } finally {
@@ -36,24 +44,37 @@ export default function HomePage() {
     }
   }, []);
 
+  const handleSearch = useCallback((params) => {
+    runSearch(params, 1);
+  }, [runSearch]);
+
   const handleSort = useCallback((newSort) => {
-    if (!results) return;
-    setSortBy(newSort);
-    const sorted = [...results.deals];
-    if (newSort === 'deal_score') {
-      sorted.sort((a, b) => b.deal_score - a.deal_score);
-    } else if (newSort === 'price_asc') {
-      sorted.sort((a, b) => a.property.list_price - b.property.list_price);
-    } else if (newSort === 'price_desc') {
-      sorted.sort((a, b) => b.property.list_price - a.property.list_price);
-    } else if (newSort === 'newest') {
-      sorted.sort((a, b) => (a.property.days_on_market || 999) - (b.property.days_on_market || 999));
-    }
-    setResults({ ...results, deals: sorted });
-  }, [results]);
+    if (!lastParams) return;
+    runSearch({ ...lastParams, sort_by: newSort }, 1);
+  }, [lastParams, runSearch]);
+
+  const goToPage = useCallback((pageNum) => {
+    if (!lastParams || loading) return;
+    if (pageNum < 1) return;
+    if (results?.total_pages && pageNum > results.total_pages) return;
+    runSearch(lastParams, pageNum);
+  }, [lastParams, loading, results, runSearch]);
+
+  // Saved-search load: repopulate the form, then re-run.
+  const handleLoadSaved = useCallback((params) => {
+    const merged = { ...DEFAULT_SPECS, ...params };
+    setSpecs(merged);
+    runSearch(cleanParams(merged), 1);
+  }, [runSearch]);
 
   const stats = results?.market_stats;
   const deals = results?.deals || [];
+  const totalPages = results?.total_pages || 0;
+  const sortBy = results?.search_specs?.sort_by || 'deal_score';
+  const rangeStart = results?.total_results
+    ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const rangeEnd = results?.total_results
+    ? Math.min(page * PAGE_SIZE, results.total_results) : 0;
 
   return (
     <main className="app-container">
@@ -90,7 +111,18 @@ export default function HomePage() {
       <MortgageCalculator collapsible defaultExpanded={false} />
 
       {/* Search Form */}
-      <SearchForm onSearch={handleSearch} loading={loading} />
+      <SearchForm
+        specs={specs}
+        onSpecsChange={setSpecs}
+        onSearch={handleSearch}
+        loading={loading}
+      />
+
+      {/* Saved Searches */}
+      <SavedSearches
+        currentParams={lastParams ? cleanParams(specs) : {}}
+        onLoad={handleLoadSaved}
+      />
 
       {/* Loading */}
       {loading && (
@@ -109,9 +141,6 @@ export default function HomePage() {
               <div className="market-stat-card">
                 <div className="market-stat-value">{formatCurrency(stats.median_price)}</div>
                 <div className="market-stat-label">Median Price</div>
-                <div className={`market-stat-trend ${stats.price_trend_30d >= 0 ? 'trend-up' : 'trend-down'}`}>
-                  {stats.price_trend_30d >= 0 ? '▲' : '▼'} {Math.abs(stats.price_trend_30d)}% (30d)
-                </div>
               </div>
               <div className="market-stat-card">
                 <div className="market-stat-value">${stats.avg_price_per_sqft?.toFixed(0)}</div>
@@ -124,9 +153,6 @@ export default function HomePage() {
               <div className="market-stat-card">
                 <div className="market-stat-value">{stats.total_listings}</div>
                 <div className="market-stat-label">Total Listings</div>
-                <div className={`market-stat-trend ${stats.inventory_change_30d >= 0 ? 'trend-up' : 'trend-down'}`}>
-                  {stats.inventory_change_30d >= 0 ? '▲' : '▼'} {Math.abs(stats.inventory_change_30d)}% (30d)
-                </div>
               </div>
               <div className="market-stat-card">
                 <div className="market-stat-value">{stats.avg_year_built}</div>
@@ -152,7 +178,8 @@ export default function HomePage() {
           {/* Sort & Results Header */}
           <div className="results-header">
             <div className="results-count">
-              Showing <strong>{deals.length}</strong> properties ranked by deal quality
+              Showing <strong>{rangeStart}–{rangeEnd}</strong> of{' '}
+              <strong>{results.total_results}</strong> properties ranked by deal quality
             </div>
             <div className="sort-controls">
               {[
@@ -179,6 +206,31 @@ export default function HomePage() {
               <PropertyCard key={deal.property.id || idx} deal={deal} />
             ))}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="pagination-controls">
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => goToPage(page - 1)}
+                disabled={page <= 1 || loading}
+              >
+                ← Prev
+              </button>
+              <span className="pagination-info">
+                Page <strong>{page}</strong> of <strong>{totalPages}</strong>
+              </span>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages || loading}
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </>
       )}
 

@@ -11,6 +11,7 @@ consistent and auditable in one place.
 """
 from __future__ import annotations
 
+import logging
 import time
 import csv
 import io
@@ -18,6 +19,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 # ── Live base-rate fetch (FRED, no key) ───────────────────────────────────────
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MORTGAGE30US"
@@ -52,7 +55,7 @@ def get_market_base_rate(force_refresh: bool = False) -> dict:
         _rate_cache.update({"rate": latest, "ts": now, "source": "fred"})
         return {"rate": latest, "source": "fred", "as_of": now}
     except Exception as exc:  # network down, parse fail, etc.
-        print(f"FRED rate fetch failed ({exc}); using fallback/cache.")
+        logger.warning("FRED rate fetch failed (%s); using fallback/cache.", exc)
         if cached is not None:
             return {"rate": cached, "source": "cache", "as_of": _rate_cache["ts"]}
         return {"rate": _STATIC_FALLBACK_RATE, "source": "fallback", "as_of": now}

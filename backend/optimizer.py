@@ -3,21 +3,36 @@ Deal Optimizer for the Home Finder.
 Scores and ranks properties based on the gap between estimated value
 and asking price, factoring in risk and investment potential.
 """
+import logging
+import statistics
 from typing import List, Optional
 from models import (
     Property, SearchSpecs, DealScore, ValuationResult, MarketStats,
     PropertyCondition
 )
-from valuation_engine import valuate_property
+from valuation_engine import valuate_property, ValuationError
 from data_pipeline import fetch_live_listings, get_market_sqft_price
-import statistics
+from loan_engine import get_market_base_rate
+
+logger = logging.getLogger(__name__)
+
+# Long-run national average appreciation used for the 5yr ROI projection.
+# Rough heuristic, not market-specific.
+APPRECIATION_ASSUMPTION = 0.035
 
 
 def _calculate_monthly_payment(price: float, down_pct: float = 0.20,
-                                rate: float = 0.0685, years: int = 30) -> float:
-    """Estimate monthly mortgage payment (P&I only)."""
+                                rate: Optional[float] = None,
+                                years: int = 30) -> float:
+    """Estimate monthly mortgage payment (P&I only).
+
+    Rate is an annual percentage (e.g. 6.85); pulled live from FRED when
+    not supplied.
+    """
+    if rate is None:
+        rate = get_market_base_rate()["rate"]
     loan = price * (1 - down_pct)
-    monthly_rate = rate / 12
+    monthly_rate = rate / 100 / 12
     n = years * 12
     if monthly_rate == 0:
         return loan / n
@@ -28,8 +43,7 @@ def _calculate_monthly_payment(price: float, down_pct: float = 0.20,
 
 def _estimate_5yr_roi(prop: Property, estimated_value: float) -> float:
     """Rough 5-year ROI estimate based on appreciation + equity."""
-    appreciation_rate = 0.035  # 3.5% annual avg for MD
-    future_value = estimated_value * (1 + appreciation_rate) ** 5
+    future_value = estimated_value * (1 + APPRECIATION_ASSUMPTION) ** 5
     down_payment = prop.list_price * 0.20
     equity_gained = future_value - prop.list_price
     roi = (equity_gained / max(down_payment, 1)) * 100
@@ -204,30 +218,42 @@ def score_deal(prop: Property, val: ValuationResult) -> DealScore:
     )
 
 
-def optimize_search(specs: SearchSpecs) -> dict:
-    """End-to-end pipeline: fetch data, valuate, and optimize."""
+def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
+                    page_size: int = 20) -> dict:
+    """End-to-end pipeline: fetch data, valuate, and optimize.
+
+    Pagination is opt-in: pass page >= 1 to get a slice (1-indexed) of
+    page_size deals; without it the full result set is returned.
+    """
+    if page_size < 1:
+        page_size = 1
+    page_size = min(page_size, 100)
+    area_name = specs.city or specs.county or specs.state or "the search area"
+
     # Fetch listings
     properties = fetch_live_listings(specs, count=60)
-    
+
     if not properties:
         return {
             "deals": [],
             "market_stats": MarketStats(
-                area_name=specs.city or specs.county or specs.state or "Maryland",
+                area_name=area_name,
                 median_price=0,
                 avg_price_per_sqft=0,
                 median_days_on_market=0,
                 total_listings=0,
                 avg_year_built=1990,
-                price_trend_30d=0,
-                inventory_change_30d=0,
             ).model_dump(),
             "total_results": 0,
+            "total_pages": 0,
+            "page": page,
+            "page_size": page_size,
             "search_specs": specs.model_dump(),
             "message": "No properties found matching your criteria."
         }
 
-    # Valuate and score each property
+    # Valuate and score each property; skip (rather than crash on) any
+    # listing the valuation engine rejects.
     deals: List[DealScore] = []
     all_prices = []
     all_ppsf = []
@@ -235,7 +261,11 @@ def optimize_search(specs: SearchSpecs) -> dict:
     all_year = []
 
     for prop in properties:
-        val = valuate_property(prop)
+        try:
+            val = valuate_property(prop)
+        except ValuationError as e:
+            logger.warning("Skipping property %s in search: %s", prop.id, e)
+            continue
         deal = score_deal(prop, val)
         deals.append(deal)
 
@@ -245,6 +275,25 @@ def optimize_search(specs: SearchSpecs) -> dict:
             all_dom.append(prop.days_on_market)
         if prop.year_built:
             all_year.append(prop.year_built)
+
+    if not deals:
+        return {
+            "deals": [],
+            "market_stats": MarketStats(
+                area_name=area_name,
+                median_price=0,
+                avg_price_per_sqft=0,
+                median_days_on_market=0,
+                total_listings=0,
+                avg_year_built=1990,
+            ).model_dump(),
+            "total_results": 0,
+            "total_pages": 0,
+            "page": page,
+            "page_size": page_size,
+            "search_specs": specs.model_dump(),
+            "message": "No properties could be valuated with the available data."
+        }
 
     # Sort
     sort_key = specs.sort_by or "deal_score"
@@ -257,8 +306,8 @@ def optimize_search(specs: SearchSpecs) -> dict:
     elif sort_key == "newest":
         deals.sort(key=lambda d: d.property.days_on_market or 999)
 
-    # Build market stats
-    area_name = specs.city or specs.county or specs.state or "Maryland"
+    # Build market stats (computed from the actual result set — no
+    # fabricated trend numbers)
     market_stats = MarketStats(
         area_name=area_name,
         median_price=round(statistics.median(all_prices), 0) if all_prices else 0,
@@ -266,13 +315,23 @@ def optimize_search(specs: SearchSpecs) -> dict:
         median_days_on_market=int(statistics.median(all_dom)) if all_dom else 0,
         total_listings=len(deals),
         avg_year_built=int(statistics.mean(all_year)) if all_year else 1990,
-        price_trend_30d=round((2.1 + (hash(area_name) % 30 - 15) / 10), 2),
-        inventory_change_30d=round((-3.5 + (hash(area_name) % 20 - 10) / 5), 2),
     )
 
+    # Opt-in pagination slice (1-indexed page of the sorted list)
+    total = len(deals)
+    response_deals = deals
+    current_page = page
+    if page is not None:
+        current_page = max(1, page)
+        start = (current_page - 1) * page_size
+        response_deals = deals[start:start + page_size]
+
     return {
-        "deals": [d.model_dump() for d in deals],
+        "deals": [d.model_dump() for d in response_deals],
         "market_stats": market_stats.model_dump(),
-        "total_results": len(deals),
+        "total_results": total,
+        "total_pages": (-(-total // page_size)) if current_page else None,
+        "page": current_page,
+        "page_size": page_size,
         "search_specs": specs.model_dump(),
     }

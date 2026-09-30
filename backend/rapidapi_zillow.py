@@ -1,11 +1,20 @@
+import logging
 import os
+import time
 import requests
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Dict
 from models import Property, PropertyType, PropertyCondition, SearchSpecs
+
+logger = logging.getLogger(__name__)
 
 API_HOST = "zillow-com-live-data-scraper-api.p.rapidapi.com"
 BASE_URL = f"https://{API_HOST}"
+
+# Raw location responses cached this long — cuts quota usage + latency on
+# repeated searches of the same area within a short window.
+RAW_CACHE_TTL_SECONDS = 20 * 60
+
+_raw_cache: Dict[str, dict] = {}  # location -> {"items": [...], "ts": float}
 
 _PTYPE_MAP = {
     "SINGLE_FAMILY": PropertyType.SINGLE_FAMILY,
@@ -65,28 +74,25 @@ def _build_location(specs: SearchSpecs) -> str:
     return "USA"
 
 
-def fetch_rapidapi_properties(specs: SearchSpecs, limit: int = 50) -> List[Property]:
-    """
-    Fetch real-time listings from the Zillow Live Data Scraper API
-    (zillow-com-live-data-scraper-api) via the /bylocation endpoint.
-    Requires RAPIDAPI_KEY in the environment.
-    """
-    api_key = os.environ.get("RAPIDAPI_KEY")
-    if not api_key:
-        print("RAPIDAPI_KEY not found in environment. Returning empty list.")
-        return []
+def _fetch_raw_location(location: str, api_key: str) -> List[dict]:
+    """Fetch raw listing items for a location, served from cache when fresh."""
+    cached = _raw_cache.get(location)
+    now = time.time()
+    if cached and (now - cached["ts"]) < RAW_CACHE_TTL_SECONDS:
+        logger.info("Using cached listings for '%s' (%d items).",
+                    location, len(cached["items"]))
+        return cached["items"]
 
     headers = {
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": API_HOST,
     }
-    location = _build_location(specs)
 
-    properties: List[Property] = []
+    items: List[dict] = []
     page = 1
     max_pages = 5  # safety cap on free tier
 
-    while len(properties) < limit and page <= max_pages:
+    while page <= max_pages:
         try:
             resp = requests.get(
                 f"{BASE_URL}/bylocation",
@@ -97,62 +103,96 @@ def fetch_rapidapi_properties(specs: SearchSpecs, limit: int = 50) -> List[Prope
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            print(f"RapidAPI fetch error (page {page}): {e}")
+            logger.warning("RapidAPI fetch error for '%s' (page %s): %s",
+                           location, page, e)
             break
 
         results = data.get("results", [])
         if not results:
             break
 
-        for item in results:
-            if str(item.get("status", "")).upper() not in ("FOR_SALE", "FORSALE", ""):
-                continue
+        items.extend(results)
 
-            price = float(item.get("price") or 0)
-            if price <= 0:
-                continue
-
-            beds = int(item.get("beds") or 0)
-            baths = float(item.get("baths") or 0)
-            sqft = int(item.get("sqft") or 0)
-
-            if not _passes_filters(price, beds, baths, sqft, specs):
-                continue
-
-            ptype = _PTYPE_MAP.get(
-                str(item.get("property_type", "")).upper(),
-                PropertyType.SINGLE_FAMILY,
-            )
-            full_addr = item.get("address", "")
-            city, state, zip_code = _parse_address(full_addr, specs)
-            zpid = item.get("zpid", "")
-
-            properties.append(Property(
-                id=str(zpid),
-                address=full_addr,
-                city=city,
-                state=state,
-                zip_code=zip_code,
-                latitude=item.get("latitude"),
-                longitude=item.get("longitude"),
-                list_price=price,
-                property_type=ptype,
-                bedrooms=beds,
-                bathrooms=baths,
-                sqft=sqft or int(price / 200),
-                condition=PropertyCondition.GOOD,
-                source="RapidAPI-ZillowLive",
-                image_url=item.get("photo_url"),
-                url=item.get("url") or f"https://www.zillow.com/homedetails/{zpid}_zpid/",
-            ))
-
-            if len(properties) >= limit:
-                break
-
-        # No more pages available
-        if len(results) < 1 or data.get("count", 0) <= page * len(results):
+        if data.get("count", 0) <= page * len(results):
             break
         page += 1
 
-    print(f"Fetched {len(properties)} live listings for '{location}'.")
+    logger.info("Fetched %d raw listings for '%s'.", len(items), location)
+    _raw_cache[location] = {"items": items, "ts": now}
+    return items
+
+
+def fetch_rapidapi_properties(specs: SearchSpecs, limit: int = 50) -> List[Property]:
+    """
+    Fetch real-time listings from the Zillow Live Data Scraper API
+    (zillow-com-live-data-scraper-api) via the /bylocation endpoint.
+    Requires RAPIDAPI_KEY in the environment.
+    """
+    api_key = os.environ.get("RAPIDAPI_KEY")
+    if not api_key:
+        logger.info("RAPIDAPI_KEY not found in environment. Returning empty list.")
+        return []
+
+    location = _build_location(specs)
+    raw_items = _fetch_raw_location(location, api_key)
+
+    properties: List[Property] = []
+    skipped_no_data = 0
+
+    for item in raw_items:
+        if str(item.get("status", "")).upper() not in ("FOR_SALE", "FORSALE", ""):
+            continue
+
+        price = float(item.get("price") or 0)
+        if price <= 0:
+            continue
+
+        beds = int(item.get("beds") or 0)
+        baths = float(item.get("baths") or 0)
+        sqft = int(item.get("sqft") or 0)
+
+        # sqft drives the valuation engine — inventing it (old behavior:
+        # price/200 estimate) would silently corrupt valuations. Skip instead.
+        if sqft <= 0:
+            skipped_no_data += 1
+            continue
+
+        if not _passes_filters(price, beds, baths, sqft, specs):
+            continue
+
+        ptype = _PTYPE_MAP.get(
+            str(item.get("property_type", "")).upper(),
+            PropertyType.SINGLE_FAMILY,
+        )
+        full_addr = item.get("address", "")
+        city, state, zip_code = _parse_address(full_addr, specs)
+        zpid = item.get("zpid", "")
+
+        properties.append(Property(
+            id=str(zpid),
+            address=full_addr,
+            city=city,
+            state=state,
+            zip_code=zip_code,
+            latitude=item.get("latitude"),
+            longitude=item.get("longitude"),
+            list_price=price,
+            property_type=ptype,
+            bedrooms=beds,
+            bathrooms=baths,
+            sqft=sqft,
+            condition=PropertyCondition.GOOD,
+            source="RapidAPI-ZillowLive",
+            image_url=item.get("photo_url"),
+            url=item.get("url") or f"https://www.zillow.com/homedetails/{zpid}_zpid/",
+        ))
+
+        if len(properties) >= limit:
+            break
+
+    if skipped_no_data:
+        logger.info("Skipped %d '%s' listings missing sqft/price data.",
+                    skipped_no_data, location)
+    logger.info("Returning %d filtered live listings for '%s'.",
+                len(properties), location)
     return properties

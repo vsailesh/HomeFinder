@@ -408,7 +408,7 @@ def valuate_property(prop: Property) -> ValuationResult:
     if not prop.list_price or prop.list_price <= 0:
         raise InsufficientDataError(f"Property list price must be positive, got: {prop.list_price}")
 
-    logger.info(f"Starting valuation for property {prop.id} at {prop.address}")
+    logger.debug(f"Starting valuation for property {prop.id} at {prop.address}")
 
     try:
         # Get market data with fallback
@@ -493,7 +493,7 @@ def valuate_property(prop: Property) -> ValuationResult:
             price_difference_pct=price_diff_pct,
         )
 
-        logger.info(f"Valuation complete for property {prop.id}: ${estimated_value:,.0f}")
+        logger.debug(f"Valuation complete for property {prop.id}: ${estimated_value:,.0f}")
         return result
 
     except InsufficientDataError:
@@ -520,7 +520,7 @@ def valuate_properties(properties: List[Property]) -> Tuple[List[ValuationResult
     successful_results = []
     failures = []
 
-    logger.info(f"Starting batch valuation for {len(properties)} properties")
+    logger.debug(f"Starting batch valuation for {len(properties)} properties")
 
     for prop in properties:
         try:
@@ -539,7 +539,7 @@ def valuate_properties(properties: List[Property]) -> Tuple[List[ValuationResult
             logger.error(f"Unexpected error valuating property {prop.id}: {e}")
             failures.append((prop, f"Unexpected error: {e}"))
 
-    logger.info(f"Batch valuation complete: {len(successful_results)} successful, {len(failures)} failed")
+    logger.debug(f"Batch valuation complete: {len(successful_results)} successful, {len(failures)} failed")
     return successful_results, failures
 
 

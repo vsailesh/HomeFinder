@@ -13,34 +13,46 @@ const CITIES = [
   { name: 'Bowie', state: 'MD', county: "Prince George's County" },
 ];
 
-export default function SearchForm({ onSearch, loading }) {
-  const [expanded, setExpanded] = useState(true);
-  const [specs, setSpecs] = useState({
-    city: '',
-    state: 'MD',
-    county: '',
-    min_price: '',
-    max_price: '',
-    min_bedrooms: '',
-    max_bedrooms: '',
-    min_bathrooms: '',
-    max_bathrooms: '',
-    min_sqft: '',
-    max_sqft: '',
-    property_type: '',
-    min_year_built: '',
-    max_year_built: '',
-    max_hoa: '',
-    must_have_pool: false,
-    must_have_basement: false,
-    must_have_garage: false,
-    max_days_on_market: '',
-    sort_by: 'deal_score',
+/** Strip empty/false values so they don't hit the query string. */
+export function cleanParams(specs) {
+  const params = {};
+  Object.entries(specs).forEach(([key, val]) => {
+    if (val !== '' && val !== false && val != null && val !== undefined) {
+      params[key] = val;
+    }
   });
+  return params;
+}
+
+export const DEFAULT_SPECS = {
+  city: '',
+  state: 'MD',
+  county: '',
+  min_price: '',
+  max_price: '',
+  min_bedrooms: '',
+  max_bedrooms: '',
+  min_bathrooms: '',
+  max_bathrooms: '',
+  min_sqft: '',
+  max_sqft: '',
+  property_type: '',
+  min_year_built: '',
+  max_year_built: '',
+  max_hoa: '',
+  must_have_pool: false,
+  must_have_basement: false,
+  must_have_garage: false,
+  max_days_on_market: '',
+  sort_by: 'deal_score',
+};
+
+export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) {
+  const [expanded, setExpanded] = useState(true);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setSpecs(prev => ({
+    onSpecsChange(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
@@ -48,29 +60,11 @@ export default function SearchForm({ onSearch, loading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const params = {};
-    Object.entries(specs).forEach(([key, val]) => {
-      if (val !== '' && val !== false && val !== null && val !== undefined) {
-        params[key] = val;
-      }
-    });
-    onSearch(params);
+    onSearch(cleanParams(specs));
   };
 
   const handleReset = () => {
-    setSpecs({
-      city: '', state: 'MD', county: '',
-      min_price: '', max_price: '',
-      min_bedrooms: '', max_bedrooms: '',
-      min_bathrooms: '', max_bathrooms: '',
-      min_sqft: '', max_sqft: '',
-      property_type: '',
-      min_year_built: '', max_year_built: '',
-      max_hoa: '',
-      must_have_pool: false, must_have_basement: false, must_have_garage: false,
-      max_days_on_market: '',
-      sort_by: 'deal_score',
-    });
+    onSpecsChange(DEFAULT_SPECS);
   };
 
   return (
