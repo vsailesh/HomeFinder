@@ -172,6 +172,61 @@ async def loan_quote(req: LoanQuoteRequest):
     return LoanQuoteResponse(**q.__dict__)
 
 
+@app.get("/api/debug/source")
+async def debug_data_source():
+    """Diagnose why live listings may not be loading.
+
+    Reports (without leaking the key) whether RAPIDAPI_KEY is set and
+    the outcome of a single direct RapidAPI call, including the HTTP
+    status and a trimmed error/message body.
+    """
+    import requests as _requests
+    import rapidapi_zillow as _rz
+
+    api_key = os.environ.get("RAPIDAPI_KEY", "")
+    diag = {
+        "key_present": bool(api_key),
+        "key_length": len(api_key),
+        "key_prefix": api_key[:6] + "…" if api_key else None,
+    }
+
+    if not api_key:
+        diag["verdict"] = "RAPIDAPI_KEY not set in this service's environment"
+        return diag
+
+    try:
+        resp = _requests.get(
+            f"{_rz.BASE_URL}/bylocation",
+            headers={"x-rapidapi-key": api_key, "x-rapidapi-host": _rz.API_HOST},
+            params={"location": "Bethesda, MD", "page": 1},
+            timeout=20,
+        )
+        diag["rapidapi_http_status"] = resp.status_code
+        body = resp.text[:400]
+        diag["rapidapi_body_head"] = body
+        if resp.status_code == 200:
+            results = (resp.json() or {}).get("results", [])
+            diag["results_on_page1"] = len(results)
+            diag["verdict"] = (
+                "Key works — API is returning data. If the app still shows "
+                "mock data, the failing search location may just have no "
+                "FOR_SALE results."
+                if results else
+                "Key works but page 1 returned zero results for Bethesda, MD"
+            )
+        elif resp.status_code in (401, 403):
+            diag["verdict"] = ("Key rejected — invalid key, or no active "
+                               "subscription to zillow-com-live-data-scraper-api")
+        elif resp.status_code == 429:
+            diag["verdict"] = "Quota exceeded — free plan limit or rate limit hit"
+        else:
+            diag["verdict"] = f"Unexpected RapidAPI HTTP {resp.status_code}"
+    except Exception as e:
+        diag["verdict"] = f"Request failed before HTTP: {type(e).__name__}: {e}"
+
+    return diag
+
+
 @app.get("/api/status")
 async def get_system_status():
     """Return system status and health information."""
