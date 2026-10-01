@@ -205,15 +205,27 @@ async def debug_data_source():
         body = resp.text[:400]
         diag["rapidapi_body_head"] = body
         if resp.status_code == 200:
-            results = (resp.json() or {}).get("results", [])
-            diag["results_on_page1"] = len(results)
-            diag["verdict"] = (
-                "Key works — API is returning data. If the app still shows "
-                "mock data, the failing search location may just have no "
-                "FOR_SALE results."
-                if results else
-                "Key works but page 1 returned zero results for Bethesda, MD"
-            )
+            try:
+                payload = resp.json() or {}
+            except ValueError:
+                payload = {}
+            if payload.get("success") is False:
+                diag["verdict"] = (
+                    "Key accepted, but the API's own upstream scrape is "
+                    "failing (its 'Data Unavailable' error). Provider-side "
+                    "outage — nothing wrong with your key. Retry later or "
+                    "check the API's status/plan on RapidAPI."
+                )
+            else:
+                results = payload.get("results", [])
+                diag["results_on_page1"] = len(results)
+                diag["verdict"] = (
+                    "Key works — API is returning data. If the app still "
+                    "shows mock data, the search location may have no "
+                    "FOR_SALE results."
+                    if results else
+                    "Key works but page 1 returned zero results for Bethesda, MD"
+                )
         elif resp.status_code in (401, 403):
             diag["verdict"] = ("Key rejected — invalid key, or no active "
                                "subscription to zillow-com-live-data-scraper-api")

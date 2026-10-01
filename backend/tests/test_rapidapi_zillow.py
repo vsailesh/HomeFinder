@@ -141,3 +141,63 @@ class TestRawCache:
 
         rz._fetch_raw_location("Austin, TX", "key")
         assert len(calls) == 1, "expired cache should trigger refetch"
+
+    def test_upstream_success_false_retried_then_empty(self, monkeypatch):
+        """HTTP 200 + {'success': false} = provider outage, not zero results.
+
+        Must retry once, return empty, and NOT cache the failure.
+        """
+        monkeypatch.setattr(rz.time, "sleep", lambda s: None)
+        responses = []
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"success": False, "error": "Data Unavailable",
+                        "status_code": 503}
+
+        def fake_get(url, **kw):
+            responses.append(url)
+            return FakeResp()
+
+        monkeypatch.setattr(rz.requests, "get", fake_get)
+        monkeypatch.setattr(rz, "_raw_cache", {})
+
+        items = rz._fetch_raw_location("Bethesda, MD", "key")
+        assert items == []
+        assert len(responses) == 2, "should retry the upstream failure once"
+        assert "Bethesda, MD" not in rz._raw_cache, \
+            "failure must not be cached"
+
+    def test_upstream_recovers_on_retry(self, monkeypatch):
+        monkeypatch.setattr(rz.time, "sleep", lambda s: None)
+        item = {"zpid": 5, "price": 300000, "beds": 2, "baths": 1,
+                "sqft": 900, "status": "FOR_SALE", "address": "y"}
+        attempts = []
+
+        class FakeFail:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"success": False, "error": "Data Unavailable"}
+
+        class FakeOk:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"results": [item], "count": 1}
+
+        def fake_get(url, **kw):
+            attempts.append(url)
+            return FakeFail() if len(attempts) == 1 else FakeOk()
+
+        monkeypatch.setattr(rz.requests, "get", fake_get)
+        monkeypatch.setattr(rz, "_raw_cache", {})
+
+        items = rz._fetch_raw_location("Bethesda, MD", "key")
+        assert items == [item]
+        assert len(attempts) == 2

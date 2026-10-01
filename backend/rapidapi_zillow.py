@@ -91,6 +91,7 @@ def _fetch_raw_location(location: str, api_key: str) -> List[dict]:
     items: List[dict] = []
     page = 1
     max_pages = 5  # safety cap on free tier
+    retried = False
 
     while page <= max_pages:
         try:
@@ -107,6 +108,22 @@ def _fetch_raw_location(location: str, api_key: str) -> List[dict]:
                            location, page, e)
             break
 
+        # The API replies HTTP 200 with {"success": false, ...} when its
+        # own upstream scraping fails. Retry once — often transient.
+        if data.get("success") is False:
+            msg = data.get("message") or data.get("error") or "unknown error"
+            if not retried:
+                retried = True
+                logger.warning(
+                    "RapidAPI upstream error for '%s' (%s) — retrying once.",
+                    location, msg)
+                time.sleep(2)
+                continue
+            logger.warning(
+                "RapidAPI upstream still failing for '%s' after retry: %s. "
+                "Falling back.", location, msg)
+            break
+
         results = data.get("results", [])
         if not results:
             break
@@ -118,7 +135,10 @@ def _fetch_raw_location(location: str, api_key: str) -> List[dict]:
         page += 1
 
     logger.info("Fetched %d raw listings for '%s'.", len(items), location)
-    _raw_cache[location] = {"items": items, "ts": now}
+    # Cache only non-empty fetches — caching an empty/upstream-failure
+    # response would mask a provider recovery for the full TTL.
+    if items:
+        _raw_cache[location] = {"items": items, "ts": now}
     return items
 
 

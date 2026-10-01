@@ -34,6 +34,8 @@ class TestRegistry:
 
 class TestMockGenerator:
     def test_respects_hard_filters(self):
+        import random
+        random.seed(102)  # generator is random; pin for determinism
         specs = SearchSpecs(
             city="Bethesda", state="MD",
             min_price=300000, max_price=600000,
