@@ -102,6 +102,8 @@ class TestRawCache:
                 "sqft": 800, "status": "FOR_SALE", "address": "x"}
 
         class FakeResp:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 
@@ -127,6 +129,8 @@ class TestRawCache:
                 "sqft": 800, "status": "FOR_SALE", "address": "x"}
 
         class FakeResp:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 
@@ -151,6 +155,8 @@ class TestRawCache:
         responses = []
 
         class FakeResp:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 
@@ -178,6 +184,8 @@ class TestRawCache:
         attempts = []
 
         class FakeFail:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 
@@ -185,6 +193,8 @@ class TestRawCache:
                 return {"success": False, "error": "Data Unavailable"}
 
         class FakeOk:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 
@@ -201,3 +211,52 @@ class TestRawCache:
         items = rz._fetch_raw_location("Bethesda, MD", "key")
         assert items == [item]
         assert len(attempts) == 2
+
+    def test_quota_429_trips_breaker(self, monkeypatch):
+        """429 must trip the breaker so later calls skip HTTP entirely."""
+        monkeypatch.setenv("RAPIDAPI_KEY", "test-key")
+        monkeypatch.setattr(rz, "_raw_cache", {})
+        monkeypatch.setattr(rz, "_quota_dead_until", 0.0)
+        calls = []
+
+        class Fake429:
+            status_code = 429
+
+            def raise_for_status(self):
+                raise AssertionError("429 handled before raise_for_status")
+
+            def json(self):
+                return {}
+
+        monkeypatch.setattr(rz.requests, "get",
+                            lambda url, **kw: (calls.append(1), Fake429())[1])
+
+        # fetch → 429 → breaker trips, empty result
+        assert rz.fetch_rapidapi_properties(SearchSpecs(), limit=5) == []
+        assert len(calls) == 1
+        assert rz._quota_dead_until > 0
+
+        # second fetch → no HTTP call at all (breaker open)
+        assert rz.fetch_rapidapi_properties(SearchSpecs(), limit=5) == []
+        assert len(calls) == 1
+
+    def test_expired_breaker_allows_calls_again(self, monkeypatch):
+        monkeypatch.setenv("RAPIDAPI_KEY", "test-key")
+        monkeypatch.setattr(rz, "_raw_cache", {})
+        # breaker already expired
+        monkeypatch.setattr(rz, "_quota_dead_until", 0.0)
+        calls = []
+
+        class FakeOk:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"results": [], "count": 0}
+
+        monkeypatch.setattr(rz.requests, "get",
+                            lambda url, **kw: (calls.append(1), FakeOk())[1])
+        rz.fetch_rapidapi_properties(SearchSpecs(), limit=5)
+        assert len(calls) == 1

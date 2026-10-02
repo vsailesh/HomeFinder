@@ -14,7 +14,13 @@ BASE_URL = f"https://{API_HOST}"
 # repeated searches of the same area within a short window.
 RAW_CACHE_TTL_SECONDS = 20 * 60
 
+# After a 429 (quota exhausted), skip the API entirely for this long —
+# circuit breaker so searches fall through to mock instantly instead of
+# eating a doomed request + timeout on every call.
+QUOTA_BACKOFF_SECONDS = 60 * 60
+
 _raw_cache: Dict[str, dict] = {}  # location -> {"items": [...], "ts": float}
+_quota_dead_until: float = 0.0    # epoch; API skipped while now < this
 
 _PTYPE_MAP = {
     "SINGLE_FAMILY": PropertyType.SINGLE_FAMILY,
@@ -93,6 +99,9 @@ def _fetch_raw_location(location: str, api_key: str) -> List[dict]:
     max_pages = 5  # safety cap on free tier
     retried = False
 
+    # Circuit breaker lives in module state; rebind via globals()
+    global _quota_dead_until
+
     while page <= max_pages:
         try:
             resp = requests.get(
@@ -101,6 +110,12 @@ def _fetch_raw_location(location: str, api_key: str) -> List[dict]:
                 params={"location": location, "page": page},
                 timeout=15,
             )
+            if resp.status_code == 429:
+                _quota_dead_until = time.time() + QUOTA_BACKOFF_SECONDS
+                logger.warning(
+                    "RapidAPI quota exhausted (429) — skipping API calls "
+                    "for %d minutes.", QUOTA_BACKOFF_SECONDS // 60)
+                break
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
@@ -151,6 +166,11 @@ def fetch_rapidapi_properties(specs: SearchSpecs, limit: int = 50) -> List[Prope
     api_key = os.environ.get("RAPIDAPI_KEY")
     if not api_key:
         logger.info("RAPIDAPI_KEY not found in environment. Returning empty list.")
+        return []
+
+    # Quota circuit breaker: while tripped, don't spend requests/timeouts.
+    if time.time() < _quota_dead_until:
+        logger.debug("RapidAPI quota backoff active — skipping API call.")
         return []
 
     location = _build_location(specs)
