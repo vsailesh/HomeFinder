@@ -25,9 +25,19 @@ export default function PropertyCard({ deal }) {
   const priceDiff = val.price_difference;
   const priceDiffPct = val.price_difference_pct;
   const isGoodDeal = priceDiff > 0;
+  const isMock = prop.source === 'mock-generator';
+  const confidencePct = Math.round((val.confidence_score || 0) * 100);
 
   return (
     <div className={`property-card ${gradeClass(deal_grade)}`} id={`property-${prop.id}`}>
+      {/* Listing photo */}
+      {prop.image_url && (
+        <div className="property-photo">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={prop.image_url} alt={prop.address} loading="lazy" />
+        </div>
+      )}
+
       {/* Top: Score + Address */}
       <div className="property-card-top">
         <div className="property-headline">
@@ -38,6 +48,11 @@ export default function PropertyCard({ deal }) {
             {prop.city}, {prop.state} {prop.zip_code}
             {prop.county && ` · ${prop.county}`}
           </div>
+          {isMock && (
+            <span className="demo-badge" title="Sample listing generated for demo — not a real property.">
+              ⚠️ Demo data
+            </span>
+          )}
         </div>
         <div className="deal-badge">
           <div className="deal-score-circle">{Math.round(deal_score)}</div>
@@ -105,6 +120,28 @@ export default function PropertyCard({ deal }) {
         </div>
       </div>
 
+      {/* Valuation confidence */}
+      <div className="confidence-section">
+        <div className="confidence-header">
+          <span className="confidence-label">Valuation confidence</span>
+          <span className={`confidence-value ${
+            confidencePct >= 70 ? 'confidence-high' :
+            confidencePct >= 50 ? 'confidence-mid' : 'confidence-low'
+          }`}>
+            {confidencePct}%
+          </span>
+        </div>
+        <div className="confidence-bar">
+          <div
+            className={`confidence-fill ${
+              confidencePct >= 70 ? 'fill-high' :
+              confidencePct >= 50 ? 'fill-mid' : 'fill-low'
+            }`}
+            style={{ width: `${confidencePct}%` }}
+          />
+        </div>
+      </div>
+
       {/* Variables breakdown */}
       <div className="variables-section">
         <button
@@ -116,23 +153,54 @@ export default function PropertyCard({ deal }) {
         </button>
 
         {showVars && (
-          <div className="variables-list">
-            {(val.variables || []).map((v, i) => (
-              <div className="variable-row" key={i}>
-                <span className="variable-name">{v.name}</span>
-                <span className={`variable-category ${categoryClass(v.category)}`}>
-                  {v.category}
-                </span>
-                <span className={`variable-impact ${
-                  v.raw_impact > 0 ? 'impact-positive' :
-                  v.raw_impact < 0 ? 'impact-negative' : 'impact-neutral'
-                }`}>
-                  {v.raw_impact > 0 ? '+' : ''}{formatCurrency(v.raw_impact)}
-                  {' '}({v.percentage_impact > 0 ? '+' : ''}{v.percentage_impact?.toFixed(1)}%)
+          <>
+            <div className="valuation-decomposition">
+              <div className="decomposition-title">Value composition</div>
+              <div className="decomposition-row">
+                <span>Base land value</span>
+                <span>{formatCurrency(val.base_land_value)}</span>
+              </div>
+              <div className="decomposition-row">
+                <span>Structure value</span>
+                <span>{formatCurrency(val.structure_value)}</span>
+              </div>
+              <div className="decomposition-row">
+                <span>Feature adjustments</span>
+                <span className={val.feature_adjustments >= 0 ? 'impact-positive' : 'impact-negative'}>
+                  {val.feature_adjustments >= 0 ? '+' : ''}{formatCurrency(val.feature_adjustments)}
                 </span>
               </div>
-            ))}
-          </div>
+              <div className="decomposition-row">
+                <span>Location premium</span>
+                <span className={val.location_premium >= 0 ? 'impact-positive' : 'impact-negative'}>
+                  {val.location_premium >= 0 ? '+' : ''}{formatCurrency(val.location_premium)}
+                </span>
+              </div>
+              <div className="decomposition-row">
+                <span>Market adjustment</span>
+                <span className={val.market_adjustment >= 0 ? 'impact-positive' : 'impact-negative'}>
+                  {val.market_adjustment >= 0 ? '+' : ''}{formatCurrency(val.market_adjustment)}
+                </span>
+              </div>
+            </div>
+            <div className="variables-list">
+              {(val.variables || []).map((v, i) => (
+                <div className="variable-row" key={i}>
+                  <span className="variable-name">{v.name}</span>
+                  <span className={`variable-category ${categoryClass(v.category)}`}>
+                    {v.category}
+                  </span>
+                  <span className={`variable-impact ${
+                    v.raw_impact > 0 ? 'impact-positive' :
+                    v.raw_impact < 0 ? 'impact-negative' : 'impact-neutral'
+                  }`}>
+                    {v.raw_impact > 0 ? '+' : ''}{formatCurrency(v.raw_impact)}
+                    {' '}({v.percentage_impact > 0 ? '+' : ''}{v.percentage_impact?.toFixed(1)}%)
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -155,6 +223,18 @@ export default function PropertyCard({ deal }) {
           </ul>
         </div>
       </div>
+
+      {/* Listing link */}
+      {prop.url && (
+        <a
+          className="listing-link"
+          href={prop.url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          View listing ↗
+        </a>
+      )}
     </div>
   );
 }

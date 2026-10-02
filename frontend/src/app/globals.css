@@ -2111,3 +2111,94 @@ a:hover { text-decoration: underline; }
 .pagination-info strong {
   color: var(--text-primary, #e2e8f0);
 }
+
+/* ── PropertyCard detail enrichment ─────────────────────────────── */
+.property-photo {
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+  max-height: 180px;
+}
+.property-photo img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+.property-headline .demo-badge {
+  display: inline-block;
+  margin-top: 6px;
+}
+.confidence-section {
+  margin: 10px 0 2px;
+}
+.confidence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.confidence-label {
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+}
+.confidence-value {
+  font-size: 12px;
+  font-weight: 600;
+}
+.confidence-high { color: var(--accent-success, #10b981); }
+.confidence-mid { color: var(--accent-warning, #f59e0b); }
+.confidence-low { color: var(--accent-danger, #ef4444); }
+.confidence-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-glass, rgba(255, 255, 255, 0.06));
+  overflow: hidden;
+}
+.confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.fill-high { background: var(--accent-success, #10b981); }
+.fill-mid { background: var(--accent-warning, #f59e0b); }
+.fill-low { background: var(--accent-danger, #ef4444); }
+.valuation-decomposition {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-glass, rgba(255, 255, 255, 0.04));
+  border-radius: 8px;
+}
+.decomposition-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #94a3b8);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.decomposition-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 2.5px 0;
+  color: var(--text-primary, #e2e8f0);
+}
+.decomposition-row span:first-child {
+  color: var(--text-secondary, #94a3b8);
+}
+.listing-link {
+  display: block;
+  text-align: center;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--accent-primary, #6366f1);
+  border-radius: 8px;
+  color: var(--accent-primary-light, #818cf8);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.listing-link:hover {
+  background: var(--bg-glass-hover, rgba(255, 255, 255, 0.08));
+}
