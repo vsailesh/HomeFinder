@@ -126,3 +126,17 @@ class TestSourceFallbackChain:
         props = dp.fetch_live_listings(self._specs())
         assert props[0].source == "RapidAPI-ZillowLive"
         assert not called  # HomeSteps never queried
+
+
+class TestSqftEstimateConfidence:
+    def test_estimated_sqft_lowers_confidence(self):
+        from valuation_engine import valuate_property
+        solid = Property(
+            id="p-solid", address="1 A St", city="Bethesda", state="MD",
+            zip_code="20814", list_price=500000, sqft=2000,
+            year_built=2010, condition=PropertyCondition.GOOD)
+        soft = solid.model_copy(update={"sqft_estimated": True,
+                                        "id": "p-soft"})
+        v_solid = valuate_property(solid)
+        v_soft = valuate_property(soft)
+        assert v_soft.confidence_score < v_solid.confidence_score

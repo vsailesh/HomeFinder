@@ -474,7 +474,11 @@ def valuate_property(prop: Property) -> ValuationResult:
             completeness += 0.1
         if prop.days_on_market is not None:
             completeness += 0.1
-        completeness = min(completeness, 0.95)
+        if getattr(prop, "sqft_estimated", False):
+            # Sqft is the core size input — an estimate (HomeSteps REO)
+            # makes the whole valuation softer.
+            completeness -= 0.1
+        completeness = max(0.3, min(completeness, 0.95))
 
         result = ValuationResult(
             property_id=prop.id,

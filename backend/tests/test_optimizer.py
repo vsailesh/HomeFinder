@@ -234,3 +234,33 @@ class TestValuation:
         base = 2000 * 425  # Bethesda market $/sqft
         assert base * 0.5 < val.estimated_value < base * 1.7
         assert 0 <= val.confidence_score <= 1
+
+
+class TestCashflowScoring:
+    def _deal(self, monkeypatch, rent=None, **over):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        prop = make_property(**over)
+        val = valuate_property(prop)
+        return prop, score_deal(prop, val, metro_rent=rent)
+
+    def test_rent_coverage_boosts_score(self, monkeypatch):
+        _, no_rent = self._deal(monkeypatch, rent=None,
+                                list_price=400000)
+        _, covered = self._deal(monkeypatch, rent=4000,
+                                list_price=400000)
+        assert covered.deal_score > no_rent.deal_score
+
+    def test_weak_coverage_penalizes(self, monkeypatch):
+        _, no_rent = self._deal(monkeypatch, rent=None,
+                                list_price=800000, id="p9")
+        _, weak = self._deal(monkeypatch, rent=1000,
+                             list_price=800000, id="p8")
+        assert weak.deal_score < no_rent.deal_score
+
+    def test_cashflow_reason_added(self, monkeypatch):
+        _, deal = self._deal(monkeypatch, rent=5000, list_price=300000)
+        assert any("cashflow" in r for r in deal.reasons)
+
+    def test_no_rent_no_cashflow_reason(self, monkeypatch):
+        _, deal = self._deal(monkeypatch, rent=None, list_price=300000)
+        assert not any("cashflow" in r for r in deal.reasons)

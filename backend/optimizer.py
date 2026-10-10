@@ -206,26 +206,44 @@ def score_deal(prop: Property, val: ValuationResult,
     if prop.hoa_fee and prop.hoa_fee > 300:
         score -= 3
 
+    # Rental yield (metro rent vs P&I payment) — an investment-relevant
+    # signal that survives even without comps. +/- 6 points.
+    payment = _calculate_monthly_payment(prop.list_price)
+    cashflow = None
+    if metro_rent is not None:
+        cashflow = round(metro_rent - payment, 2)
+        coverage = metro_rent / max(payment, 1)
+        if coverage >= 2.0:
+            score += 6
+        elif coverage >= 1.0:
+            score += 3
+        elif coverage < 0.5:
+            score -= 3
+
     # Confidence weight
     score *= (0.7 + 0.3 * val.confidence_score)
 
     # Clamp
     score = max(0, min(100, score))
 
-    payment = _calculate_monthly_payment(prop.list_price)
+    reasons = _build_reasons(prop, val)
+    if cashflow is not None and cashflow > 0:
+        reasons.insert(
+            0, f"Metro rent covers P&I with +${cashflow:,.0f}/mo "
+               f"cashflow (rent yield signal)")
+
     return DealScore(
         property=prop,
         valuation=val,
         deal_score=round(score, 1),
         deal_grade=_grade_from_score(score),
-        reasons=_build_reasons(prop, val),
+        reasons=reasons,
         risk_factors=_build_risks(prop, val),
         monthly_payment_estimate=payment,
         estimated_roi_5yr=_estimate_5yr_roi(
             prop, val.estimated_value, appreciation),
         estimated_rent=metro_rent,
-        estimated_monthly_cashflow=(round(metro_rent - payment, 2)
-                                    if metro_rent is not None else None),
+        estimated_monthly_cashflow=cashflow,
     )
 
 
