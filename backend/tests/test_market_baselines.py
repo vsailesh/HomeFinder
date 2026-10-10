@@ -8,7 +8,7 @@ from conftest import ZHVI_FIXTURE
 class TestParseSeries:
     def test_metro_rows_only(self):
         out = mb._parse_series_csv(ZHVI_FIXTURE)
-        assert set(out) == {"Baltimore, MD", "Houston, TX"}
+        assert set(out) == {"Baltimore, MD", "Houston, TX", "Washington, DC"}
         assert "United States" not in out  # country row excluded
 
     def test_latest_and_year_ago(self):
@@ -35,6 +35,25 @@ class TestGetAppreciation:
 
     def test_unknown_city_returns_none(self):
         assert mb.get_appreciation("Nowhereville", "ZZ") is None
+
+    def test_city_metro_override(self):
+        """Bethesda sits in the Washington, DC metro; Columbia in
+        Baltimore's. The override map must route both."""
+        beth = mb.get_metro_baseline("Bethesda", "MD")
+        assert beth is not None
+        assert beth["typical_value"] == 624000  # Washington fixture row
+        assert beth["median_list_price"] == 642000
+        assert mb.get_appreciation("Columbia", "MD") == round(
+            311200 / 314000 - 1, 4)  # Baltimore row
+
+    def test_override_missing_metro_falls_through(self, monkeypatch):
+        """Override pointing at a metro absent from the data must not
+        crash or fabricate — falls through to normal matching."""
+        monkeypatch.setattr(
+            mb, "CITY_METRO_OVERRIDES",
+            {("bethesda", "md"): "Atlantis, ZZ"})
+        monkeypatch.setattr(mb, "_cache", None)
+        assert mb.get_appreciation("Bethesda", "MD") is None
 
     def test_prefix_match_respects_state(self, monkeypatch):
         """A city that prefixes a different state's metro must NOT
@@ -100,7 +119,7 @@ class TestSnapshot:
     def test_snapshot_shape(self):
         snap = mb.get_baselines_snapshot()
         assert snap["ok"] is True
-        assert snap["metro_count"] == 2
+        assert snap["metro_count"] == 3
         entry = snap["metros"]["Baltimore, MD"]
         assert entry["median_list_price"] == 372000
         assert entry["as_of"] == "2026-08-31"

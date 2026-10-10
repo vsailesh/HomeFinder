@@ -29,8 +29,8 @@ class TestHealth:
         assert len(cities) > 0
 
     def test_cities_joins_metro_trend(self, client):
-        """Baltimore matches the fixture metro; trend fields appear.
-        A city without a fixture metro omits them entirely."""
+        """Baltimore matches its metro directly; Bethesda routes
+        through the override to the Washington, DC fixture row."""
         cities = client.get("/api/cities").json()["cities"]
         balt = next(c for c in cities if c["name"] == "Baltimore")
         assert balt["metro_appreciation_1y"] == round(
@@ -38,7 +38,9 @@ class TestHealth:
         assert balt["metro_median_list_price"] == 372000
         assert balt["metro_as_of"] == "2026-08-31"
         bethesda = next(c for c in cities if c["name"] == "Bethesda")
-        assert "metro_appreciation_1y" not in bethesda
+        assert bethesda["metro_appreciation_1y"] == round(
+            624000 / 608000 - 1, 4)  # Washington override
+        assert bethesda["metro_median_list_price"] == 642000
 
 
 class TestSearch:

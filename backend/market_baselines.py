@@ -36,6 +36,19 @@ _BASE_URLS = {"zhvi": ZHVI_URL, "mlp": MLP_URL}
 _CACHE_TTL_SECONDS = 24 * 60 * 60  # Zillow publishes monthly; refresh daily
 _HTTP_TIMEOUT = 60
 
+# Cities we serve that sit inside a differently-named metro. Zillow's
+# metro names (e.g. "Washington, DC") don't list them separately, so
+# map them explicitly — keyed (city, state) casefolded.
+CITY_METRO_OVERRIDES = {
+    ("bethesda", "md"): "Washington, DC",
+    ("silver spring", "md"): "Washington, DC",
+    ("rockville", "md"): "Washington, DC",
+    ("bowie", "md"): "Washington, DC",
+    ("frederick", "md"): "Washington, DC",
+    ("columbia", "md"): "Baltimore, MD",
+    ("annapolis", "md"): "Baltimore, MD",
+}
+
 _lock = threading.Lock()
 _cache: Optional[Dict] = None
 _cache_ts: float = 0.0
@@ -138,6 +151,14 @@ def _lookup_metro(city: Optional[str], state: Optional[str]) -> Optional[Dict]:
     city = city.strip().casefold()
     state = (state or "").strip().casefold()
     metros = _get_baselines()["metros"]
+
+    override = CITY_METRO_OVERRIDES.get((city, state))
+    if override:
+        entry = next(
+            (v for k, v in metros.items()
+             if k.casefold() == override.casefold()), None)
+        if entry:
+            return entry
 
     exact = f"{city}, {state}" if state else None
     entry = next(
