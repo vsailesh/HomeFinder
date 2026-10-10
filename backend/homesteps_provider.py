@@ -21,6 +21,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
@@ -259,8 +260,12 @@ def fetch_homesteps_properties(city: Optional[str],
     candidates = candidates[:_MAX_DETAIL_FETCHES]
 
     props: List[Property] = []
-    for row in candidates:
-        detail = _fetch_detail(row["href"], row)
+    # Detail pages fetched concurrently (bounded) to keep first-search
+    # latency reasonable; caches make repeat searches instant.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        details = list(pool.map(
+            lambda r: _fetch_detail(r["href"], r), candidates))
+    for detail in details:
         if detail and detail["sqft"] > 0 and detail["list_price"] > 0:
             props.append(Property(**detail))
         if len(props) >= max_results:

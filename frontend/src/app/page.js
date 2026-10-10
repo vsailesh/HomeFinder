@@ -18,11 +18,13 @@ export default function HomePage() {
   const [specs, setSpecs] = useState(DEFAULT_SPECS);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [lastParams, setLastParams] = useState(null);
   const [page, setPage] = useState(1);
 
   const runSearch = useCallback(async (params, pageNum = 1) => {
     setLoading(true);
+    setError(null);
     try {
       const query = new URLSearchParams();
       Object.entries(params).forEach(([key, val]) => {
@@ -33,12 +35,14 @@ export default function HomePage() {
       query.set('page', String(pageNum));
       query.set('page_size', String(PAGE_SIZE));
       const res = await fetch(`/api/search?${query.toString()}`);
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
       const data = await res.json();
       setResults(data);
       setLastParams(params);
       setPage(pageNum);
     } catch (err) {
       console.error('Search failed:', err);
+      setError(err.message || 'Search failed. Is the backend reachable?');
     } finally {
       setLoading(false);
     }
@@ -71,6 +75,12 @@ export default function HomePage() {
   const baseline = results?.market_baseline;
   const baselineApprec = baseline?.appreciation_1y;
   const deals = results?.deals || [];
+  const sources = new Set(deals.map(d => d.property.source));
+  const sourceNote = sources.size === 1 && sources.has('homesteps-freddie-mac')
+    ? '🏦 Showing real Freddie Mac REO listings — bank-owned inventory is limited. Full Zillow coverage returns when the listings API quota resets.'
+    : sources.size === 1 && sources.has('mock-generator')
+      ? '⚠️ Demo data — no live listings available for this search right now.'
+      : null;
   const totalPages = results?.total_pages || 0;
   const sortBy = results?.search_specs?.sort_by || 'deal_score';
   const rangeStart = results?.total_results
@@ -134,6 +144,9 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Search error */}
+      {error && !loading && <div className="search-error">{error}</div>}
+
       {/* Results */}
       {!loading && results && (
         <>
@@ -196,6 +209,9 @@ export default function HomePage() {
               <SqftVsPriceScatter deals={deals} />
             </div>
           )}
+
+          {/* Data-source context */}
+          {sourceNote && <div className="source-note">{sourceNote}</div>}
 
           {/* Sort & Results Header */}
           <div className="results-header">
