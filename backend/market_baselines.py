@@ -128,10 +128,11 @@ def _get_baselines(force_refresh: bool = False) -> Dict:
         return _cache
 
 
-def get_appreciation(city: Optional[str],
-                     state: Optional[str]) -> Optional[float]:
-    """Trailing-12mo home value growth for the metro matching the
-    search location, or None when no match / data unavailable."""
+def _lookup_metro(city: Optional[str], state: Optional[str]) -> Optional[Dict]:
+    """Find the baseline entry for the metro matching a city/state
+    search. Exact "City, ST" first, then a same-state metro whose name
+    starts with the city, then (only without a state) any metro
+    starting with the city."""
     if not city:
         return None
     city = city.strip().casefold()
@@ -142,8 +143,6 @@ def get_appreciation(city: Optional[str],
     entry = next(
         (v for k, v in metros.items() if k.casefold() == exact), None)
     if entry is None and state:
-        # Same-state metro whose name starts with the city (e.g.
-        # "Virginia Beach" vs metro "Virginia Beach, VA").
         entry = next(
             (v for k, v in metros.items()
              if k.casefold().startswith(city + ",")
@@ -152,9 +151,24 @@ def get_appreciation(city: Optional[str],
         entry = next(
             (v for k, v in metros.items()
              if k.casefold().startswith(city + ",")), None)
+    return entry
+
+
+def get_appreciation(city: Optional[str],
+                     state: Optional[str]) -> Optional[float]:
+    """Trailing-12mo home value growth for the metro matching the
+    search location, or None when no match / data unavailable."""
+    entry = _lookup_metro(city, state)
     if not entry:
         return None
     return entry.get("appreciation_1y")
+
+
+def get_metro_baseline(city: Optional[str],
+                       state: Optional[str]) -> Optional[Dict]:
+    """Full baseline entry (typical value, appreciation, median list
+    price, as-of date) for the matching metro, or None."""
+    return _lookup_metro(city, state)
 
 
 def get_baselines_snapshot() -> Dict:

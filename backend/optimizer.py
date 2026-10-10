@@ -13,7 +13,7 @@ from models import (
 from valuation_engine import valuate_property, ValuationError
 from data_pipeline import fetch_live_listings, get_market_sqft_price
 from loan_engine import get_market_base_rate
-from market_baselines import get_appreciation
+from market_baselines import get_metro_baseline
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +238,8 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
 
     # Real trailing-12mo appreciation for the metro when Zillow Research
     # has it; otherwise the national default.
-    metro_appreciation = get_appreciation(specs.city, specs.state)
+    market_baseline = get_metro_baseline(specs.city, specs.state)
+    metro_appreciation = (market_baseline or {}).get("appreciation_1y")
     if metro_appreciation is not None:
         logger.info("Using Zillow Research metro appreciation %.1f%% for %s",
                     metro_appreciation * 100, area_name)
@@ -355,4 +356,5 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         "page_size": page_size,
         "search_specs": specs.model_dump(),
         "appreciation_assumption": appreciation_meta,
+        "market_baseline": market_baseline,
     }

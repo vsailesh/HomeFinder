@@ -168,20 +168,25 @@ class TestPagination:
 class TestAppreciation:
     def test_metro_appreciation_wired_into_response(self, monkeypatch):
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
-        monkeypatch.setattr("optimizer.get_appreciation",
-                            lambda city, state: 0.10)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline",
+            lambda city, state: {"appreciation_1y": 0.10,
+                                 "typical_value": 400000,
+                                 "as_of": "2026-08-31"})
         result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
         meta = result["appreciation_assumption"]
         assert meta == {"value": 0.10, "source": "zillow-research-metro"}
+        assert result["market_baseline"]["typical_value"] == 400000
 
     def test_default_when_metro_unknown(self, monkeypatch):
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
-        monkeypatch.setattr("optimizer.get_appreciation",
+        monkeypatch.setattr("optimizer.get_metro_baseline",
                             lambda city, state: None)
         result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
         meta = result["appreciation_assumption"]
         assert meta["source"] == "national-default"
         assert meta["value"] > 0
+        assert result["market_baseline"] is None
 
     def test_higher_appreciation_raises_roi(self):
         prop = make_property(list_price=300000)

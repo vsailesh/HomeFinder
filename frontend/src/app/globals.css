@@ -433,6 +433,14 @@ a:hover { text-decoration: underline; }
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* Trend colors on the big stats-bar values — plain color, no pill */
+.market-stat-value.trend-up,
+.market-stat-value.trend-down {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
 /* ── Sort Controls ─────────────────────────────────────────────────────────── */
 .results-header {
   display: flex;

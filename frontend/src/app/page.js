@@ -68,6 +68,8 @@ export default function HomePage() {
   }, [runSearch]);
 
   const stats = results?.market_stats;
+  const baseline = results?.market_baseline;
+  const baselineApprec = baseline?.appreciation_1y;
   const deals = results?.deals || [];
   const totalPages = results?.total_pages || 0;
   const sortBy = results?.search_specs?.sort_by || 'deal_score';
@@ -162,6 +164,26 @@ export default function HomePage() {
                 <div className="market-stat-value">{stats.area_name}</div>
                 <div className="market-stat-label">Market Area</div>
               </div>
+              {baselineApprec != null && (
+                <div
+                  className="market-stat-card"
+                  title={`Trailing 12-month home value trend for the metro (Zillow Research, as of ${baseline.as_of})`}
+                >
+                  <div className={`market-stat-value ${baselineApprec >= 0 ? 'trend-up' : 'trend-down'}`}>
+                    {baselineApprec >= 0 ? '▲' : '▼'} {Math.abs(baselineApprec * 100).toFixed(1)}%
+                  </div>
+                  <div className="market-stat-label">Metro 12-mo Trend</div>
+                </div>
+              )}
+              {baseline?.median_list_price != null && (
+                <div
+                  className="market-stat-card"
+                  title={`Metro-wide median list price (Zillow Research, as of ${baseline.as_of})`}
+                >
+                  <div className="market-stat-value">{formatCurrency(baseline.median_list_price)}</div>
+                  <div className="market-stat-label">Metro Median List</div>
+                </div>
+              )}
             </div>
           )}
 

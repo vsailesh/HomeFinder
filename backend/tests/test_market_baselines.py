@@ -84,6 +84,18 @@ class TestCaching:
         assert mb.get_appreciation("Baltimore", "MD") == cached
 
 
+class TestGetMetroBaseline:
+    def test_full_entry_for_match(self):
+        entry = mb.get_metro_baseline("Baltimore", "MD")
+        assert entry is not None
+        assert entry["typical_value"] == 311200
+        assert entry["median_list_price"] == 372000
+        assert entry["as_of"] == "2026-08-31"
+
+    def test_none_for_miss(self):
+        assert mb.get_metro_baseline("Nowhereville", "ZZ") is None
+
+
 class TestSnapshot:
     def test_snapshot_shape(self):
         snap = mb.get_baselines_snapshot()
