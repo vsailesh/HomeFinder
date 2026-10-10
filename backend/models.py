@@ -138,6 +138,11 @@ class DealScore(BaseModel):
     risk_factors: List[str]
     monthly_payment_estimate: Optional[float] = None
     estimated_roi_5yr: Optional[float] = None
+    # Metro-typical rent (Zillow ZORI, SFR) and the resulting rough
+    # monthly cashflow vs the P&I payment estimate. None when the metro
+    # has no rent data.
+    estimated_rent: Optional[float] = None
+    estimated_monthly_cashflow: Optional[float] = None
 
 
 class MarketStats(BaseModel):

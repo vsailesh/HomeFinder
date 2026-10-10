@@ -109,6 +109,7 @@ class TestGetMetroBaseline:
         assert entry is not None
         assert entry["typical_value"] == 311200
         assert entry["median_list_price"] == 372000
+        assert entry["typical_rent"] == 1820  # ZORI fixture row
         assert entry["as_of"] == "2026-08-31"
 
     def test_none_for_miss(self):

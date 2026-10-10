@@ -139,7 +139,8 @@ def _build_risks(prop: Property, val: ValuationResult) -> List[str]:
 
 
 def score_deal(prop: Property, val: ValuationResult,
-               appreciation: Optional[float] = None) -> DealScore:
+               appreciation: Optional[float] = None,
+               metro_rent: Optional[float] = None) -> DealScore:
     """
     Score a single property deal on a 0-100 scale.
     Higher = better deal.
@@ -211,6 +212,7 @@ def score_deal(prop: Property, val: ValuationResult,
     # Clamp
     score = max(0, min(100, score))
 
+    payment = _calculate_monthly_payment(prop.list_price)
     return DealScore(
         property=prop,
         valuation=val,
@@ -218,9 +220,12 @@ def score_deal(prop: Property, val: ValuationResult,
         deal_grade=_grade_from_score(score),
         reasons=_build_reasons(prop, val),
         risk_factors=_build_risks(prop, val),
-        monthly_payment_estimate=_calculate_monthly_payment(prop.list_price),
+        monthly_payment_estimate=payment,
         estimated_roi_5yr=_estimate_5yr_roi(
             prop, val.estimated_value, appreciation),
+        estimated_rent=metro_rent,
+        estimated_monthly_cashflow=(round(metro_rent - payment, 2)
+                                    if metro_rent is not None else None),
     )
 
 
@@ -240,6 +245,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
     # has it; otherwise the national default.
     market_baseline = get_metro_baseline(specs.city, specs.state)
     metro_appreciation = (market_baseline or {}).get("appreciation_1y")
+    metro_rent = (market_baseline or {}).get("typical_rent")
     if metro_appreciation is not None:
         logger.info("Using Zillow Research metro appreciation %.1f%% for %s",
                     metro_appreciation * 100, area_name)
@@ -287,7 +293,8 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         except ValuationError as e:
             logger.warning("Skipping property %s in search: %s", prop.id, e)
             continue
-        deal = score_deal(prop, val, appreciation=metro_appreciation)
+        deal = score_deal(prop, val, appreciation=metro_appreciation,
+                          metro_rent=metro_rent)
         deals.append(deal)
 
         all_prices.append(prop.list_price)

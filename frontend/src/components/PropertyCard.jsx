@@ -20,7 +20,8 @@ export default function PropertyCard({ deal }) {
   const [showVars, setShowVars] = useState(false);
 
   const { property: prop, valuation: val, deal_score, deal_grade,
-          reasons, risk_factors, monthly_payment_estimate, estimated_roi_5yr } = deal;
+          reasons, risk_factors, monthly_payment_estimate, estimated_roi_5yr,
+          estimated_rent, estimated_monthly_cashflow } = deal;
 
   const priceDiff = val.price_difference;
   const priceDiffPct = val.price_difference_pct;
@@ -134,6 +135,18 @@ export default function PropertyCard({ deal }) {
             ${val.price_per_sqft?.toFixed(0)} vs ${val.market_price_per_sqft?.toFixed(0)}
           </div>
         </div>
+        {estimated_rent != null && (
+          <div
+            title="Metro-typical rent (Zillow ZORI, single-family). Cashflow = rent − P&I payment estimate; excludes tax/insurance/HOA."
+          >
+            <div className="monthly-label">Est. Rent (metro)</div>
+            <div className="monthly-value">{formatCurrency(estimated_rent)}/mo</div>
+            <div className={`roi-value ${estimated_monthly_cashflow >= 0 ? 'roi-positive' : 'roi-negative'}`}>
+              {estimated_monthly_cashflow >= 0 ? '+' : ''}
+              {formatCurrency(estimated_monthly_cashflow)}/mo cashflow
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Valuation confidence */}

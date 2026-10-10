@@ -196,6 +196,30 @@ class TestAppreciation:
         assert high > low
 
 
+class TestRentCashflow:
+    def test_rent_and_cashflow_wired(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline",
+            lambda city, state: {"appreciation_1y": 0.01,
+                                 "typical_rent": 1820.0})
+        result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        deal = result["deals"][0]
+        assert deal["estimated_rent"] == 1820.0
+        assert deal["estimated_monthly_cashflow"] == round(
+            1820.0 - deal["monthly_payment_estimate"], 2)
+        assert deal["estimated_monthly_cashflow"] < 0  # P&I > metro rent
+
+    def test_no_rent_data_leaves_fields_none(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline", lambda city, state: None)
+        result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        for deal in result["deals"]:
+            assert deal["estimated_rent"] is None
+            assert deal["estimated_monthly_cashflow"] is None
+
+
 class TestValuation:
     def test_rejects_zero_sqft(self):
         with pytest.raises(Exception):

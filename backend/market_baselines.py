@@ -30,8 +30,10 @@ ZHVI_URL = ("https://files.zillowstatic.com/research/public_csvs/zhvi/"
             "Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv")
 MLP_URL = ("https://files.zillowstatic.com/research/public_csvs/mlp/"
            "Metro_mlp_uc_sfrcondo_sm_month.csv")
+ZORI_URL = ("https://files.zillowstatic.com/research/public_csvs/zori/"
+            "Metro_zori_uc_sfr_sm_month.csv")  # typical rent, SFR
 
-_BASE_URLS = {"zhvi": ZHVI_URL, "mlp": MLP_URL}
+_BASE_URLS = {"zhvi": ZHVI_URL, "mlp": MLP_URL, "zori": ZORI_URL}
 
 _CACHE_TTL_SECONDS = 24 * 60 * 60  # Zillow publishes monthly; refresh daily
 _HTTP_TIMEOUT = 60
@@ -113,7 +115,8 @@ def _get_baselines(force_refresh: bool = False) -> Dict:
             return _cache
         try:
             fetched = _fetch_series()
-            zhvi, mlp = fetched["zhvi"], fetched["mlp"]
+            zhvi, mlp, zori = (fetched["zhvi"], fetched["mlp"],
+                               fetched.get("zori", {}))
         except Exception:
             logger.exception("Zillow Research baseline fetch failed")
             if _cache is not None:
@@ -131,6 +134,8 @@ def _get_baselines(force_refresh: bool = False) -> Dict:
                     vals["latest"] / vals["year_ago"] - 1, 4)
             if region in mlp:
                 entry["median_list_price"] = round(mlp[region]["latest"])
+            if region in zori:
+                entry["typical_rent"] = round(zori[region]["latest"])
             metros[region] = entry
         _cache = {
             "metros": metros,

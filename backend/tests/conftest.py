@@ -18,6 +18,12 @@ MLP_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,20
 394913,3,"Washington, DC",msa,DC,640000,641000,642000
 """
 
+ZORI_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,2026-07-31,2026-08-31
+102001,0,United States,country,,2000,2010,2020
+394913,1,"Baltimore, MD",msa,MD,1800,1810,1820
+394913,2,"Houston, TX",msa,TX,1900,1890,1880
+"""
+
 
 @pytest.fixture(autouse=True)
 def stub_market_baselines(monkeypatch):
@@ -25,7 +31,8 @@ def stub_market_baselines(monkeypatch):
     the suite offline and deterministic (specific tests re-stub)."""
     def fake_fetch():
         return {"zhvi": mb._parse_series_csv(ZHVI_FIXTURE),
-                "mlp": mb._parse_series_csv(MLP_FIXTURE)}
+                "mlp": mb._parse_series_csv(MLP_FIXTURE),
+                "zori": mb._parse_series_csv(ZORI_FIXTURE)}
 
     monkeypatch.setattr(mb, "_fetch_series", fake_fetch)
     monkeypatch.setattr(mb, "_cache", None)
