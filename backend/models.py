@@ -42,6 +42,7 @@ class Property(BaseModel):
     bedrooms: int = 0
     bathrooms: float = 0.0
     sqft: int = 0
+    sqft_estimated: bool = False
     lot_sqft: Optional[int] = None
     year_built: Optional[int] = None
     stories: Optional[int] = None

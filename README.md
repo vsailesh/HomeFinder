@@ -4,9 +4,9 @@ Real estate deal analyzer. Searches listings, values each property variable-by-v
 
 - **Backend** — Python 3.12 / FastAPI (`backend/`)
 - **Frontend** — Next.js / React (`frontend/`)
-- **Live data** — Zillow listings via RapidAPI (`zillow-com-live-data-scraper-api`); mortgage base rate via FRED (`MORTGAGE30US`, no key); per-metro market baselines (appreciation, list prices) from Zillow Research public CSVs (no key)
+- **Live data** — Zillow listings via RapidAPI (`zillow-com-live-data-scraper-api`); Freddie Mac REO listings via HomeSteps (no key); mortgage base rate via FRED (`MORTGAGE30US`, no key); per-metro market baselines (appreciation, list prices) from Zillow Research public CSVs (no key)
 
-When no RapidAPI key is configured — or the API errors/quota-exhausts — the app falls back to a realistic mock generator and labels every card "⚠️ Demo data". Mortgage rates are always live (FRED needs no key).
+Listing sources cascade in order: RapidAPI Zillow (full inventory, needs quota) → Freddie Mac HomeSteps REO (real bank-owned listings, no key, thin inventory; cards badged "🏦 Freddie Mac REO", sqft estimated from room count and flagged) → mock generator (labeled "⚠️ Demo data"). Mortgage rates and metro trends are always live.
 
 ## Running locally
 

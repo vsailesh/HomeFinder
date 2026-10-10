@@ -6,6 +6,7 @@ Real estate analysis tool with Python backend + Next.js frontend.
 - `backend/` - Data fetching, valuation engine, API endpoints
   - `main.py` - FastAPI server
   - `rapidapi_zillow.py` - Live Zillow listings via RapidAPI
+  - `homesteps_provider.py` - Freddie Mac REO listings (no key, thin inventory, real data)
   - `valuation_engine.py` - Property valuation models
   - `optimizer.py` - Investment optimization algorithms
   - `data_pipeline.py` - ETL pipeline + mock generator + listings cache

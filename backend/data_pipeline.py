@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from models import Property, PropertyType, PropertyCondition, SearchSpecs
 from rapidapi_zillow import fetch_rapidapi_properties
+from homesteps_provider import fetch_homesteps_properties
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +186,56 @@ def _price_for_property(base_sqft_price: float, sqft: int, bedrooms: int,
     return round(price, -2)  # round to nearest 100
 
 
+def _apply_specs_filter(props: List[Property],
+                        specs: SearchSpecs) -> List[Property]:
+    """Filter fetched listings against the search specs (HomeSteps has
+    no server-side filtering; the mock and RapidAPI paths already
+    apply specs at fetch time)."""
+    def keep(p: Property) -> bool:
+        if specs.zip_code and p.zip_code != specs.zip_code:
+            return False
+        if specs.min_price is not None and p.list_price < specs.min_price:
+            return False
+        if specs.max_price is not None and p.list_price > specs.max_price:
+            return False
+        if specs.min_bedrooms is not None and p.bedrooms < specs.min_bedrooms:
+            return False
+        if specs.max_bedrooms is not None and p.bedrooms > specs.max_bedrooms:
+            return False
+        if specs.min_bathrooms is not None and p.bathrooms < specs.min_bathrooms:
+            return False
+        if specs.max_bathrooms is not None and p.bathrooms > specs.max_bathrooms:
+            return False
+        if specs.min_sqft is not None and p.sqft < specs.min_sqft:
+            return False
+        if specs.max_sqft is not None and p.sqft > specs.max_sqft:
+            return False
+        if specs.property_types and p.property_type not in specs.property_types:
+            return False
+        if specs.min_year_built is not None and (
+                p.year_built is None or p.year_built < specs.min_year_built):
+            return False
+        if specs.max_year_built is not None and (
+                p.year_built is None or p.year_built > specs.max_year_built):
+            return False
+        if specs.must_have_basement and not p.has_basement:
+            return False
+        if specs.must_have_pool and not p.has_pool:
+            return False
+        if specs.must_have_garage and not p.has_garage:
+            return False
+        return True
+
+    return [p for p in props if keep(p)]
+
+
 def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
-    """Fetch realtime listings from RapidAPI Zillow, falling back to a
-    realistic mock generator when no API key is configured or the API
-    returns nothing (keeps the UI populated for demo/dev)."""
+    """Fetch listings, preferring real sources at each tier:
+
+    1. RapidAPI Zillow (full market inventory; needs quota)
+    2. Freddie Mac HomeSteps REO (real but thin; no key)
+    3. Mock generator (labeled demo data — last resort)
+    """
     logger.info("Fetching realtime listings from Zillow via RapidAPI...")
     live_props = fetch_rapidapi_properties(specs, limit=max(count, 50))
     if live_props and len(live_props) > 0:
@@ -196,7 +243,16 @@ def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
         register_listings(live_props)
         return live_props
 
-    logger.info("API returned empty/failed — using mock listing generator.")
+    logger.info("RapidAPI empty/failed — trying Freddie Mac HomeSteps REO.")
+    reo_props = _apply_specs_filter(
+        fetch_homesteps_properties(specs.city, specs.state, specs.zip_code),
+        specs)
+    if reo_props:
+        logger.info("HomeSteps returned %d real REO listings.", len(reo_props))
+        register_listings(reo_props)
+        return reo_props
+
+    logger.info("No real sources available — using mock listing generator.")
     mock_props = generate_mock_listings(specs, count=count)
     register_listings(mock_props)
     return mock_props

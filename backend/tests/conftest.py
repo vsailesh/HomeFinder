@@ -21,7 +21,8 @@ MLP_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,20
 
 @pytest.fixture(autouse=True)
 def stub_market_baselines(monkeypatch):
-    """Serve fixture Zillow data and reset the module cache."""
+    """Serve fixture Zillow data, stub HomeSteps, reset caches. Keeps
+    the suite offline and deterministic (specific tests re-stub)."""
     def fake_fetch():
         return {"zhvi": mb._parse_series_csv(ZHVI_FIXTURE),
                 "mlp": mb._parse_series_csv(MLP_FIXTURE)}
@@ -29,4 +30,8 @@ def stub_market_baselines(monkeypatch):
     monkeypatch.setattr(mb, "_fetch_series", fake_fetch)
     monkeypatch.setattr(mb, "_cache", None)
     monkeypatch.setattr(mb, "_cache_ts", 0.0)
+
+    import data_pipeline as dp
+    monkeypatch.setattr(dp, "fetch_homesteps_properties",
+                        lambda city, state, zip_code=None: [])
     yield

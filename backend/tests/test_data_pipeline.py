@@ -79,3 +79,50 @@ class TestMarketSqftPrice:
 
     def test_unknown_default(self):
         assert dp.get_market_sqft_price("Nowhere") == 225.0
+
+
+class TestSourceFallbackChain:
+    """RapidAPI -> HomeSteps REO -> mock generator."""
+
+    def _specs(self):
+        return SearchSpecs(city="Baltimore", state="MD")
+
+    def test_homesteps_beats_mock(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(dp, "fetch_rapidapi_properties",
+                            lambda specs, limit=50: [])
+        from models import Property, PropertyCondition
+        reo = Property(
+            id="hs-1", address="1 Real St", city="Baltimore", state="MD",
+            zip_code="21201", list_price=100000, sqft=1000,
+            condition=PropertyCondition.UNKNOWN,
+            source="homesteps-freddie-mac")
+        monkeypatch.setattr(dp, "fetch_homesteps_properties",
+                            lambda c, s, z=None: [reo])
+        props = dp.fetch_live_listings(self._specs())
+        assert [p.source for p in props] == ["homesteps-freddie-mac"]
+
+    def test_mock_when_homesteps_empty(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(dp, "fetch_rapidapi_properties",
+                            lambda specs, limit=50: [])
+        monkeypatch.setattr(dp, "fetch_homesteps_properties",
+                            lambda c, s, z=None: [])
+        props = dp.fetch_live_listings(self._specs())
+        assert props and props[0].source == "mock-generator"
+
+    def test_rapidapi_beats_homesteps(self, monkeypatch):
+        monkeypatch.setenv("RAPIDAPI_KEY", "k" * 50)
+        from models import Property, PropertyCondition
+        live = Property(
+            id="z-1", address="1 Zillow St", city="Baltimore", state="MD",
+            zip_code="21201", list_price=200000, sqft=1500,
+            condition=PropertyCondition.UNKNOWN, source="RapidAPI-ZillowLive")
+        monkeypatch.setattr(dp, "fetch_rapidapi_properties",
+                            lambda specs, limit=50: [live])
+        called = []
+        monkeypatch.setattr(dp, "fetch_homesteps_properties",
+                            lambda c, s, z=None: called.append(1) or [])
+        props = dp.fetch_live_listings(self._specs())
+        assert props[0].source == "RapidAPI-ZillowLive"
+        assert not called  # HomeSteps never queried

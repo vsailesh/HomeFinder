@@ -26,6 +26,7 @@ export default function PropertyCard({ deal }) {
   const priceDiffPct = val.price_difference_pct;
   const isGoodDeal = priceDiff > 0;
   const isMock = prop.source === 'mock-generator';
+  const isReo = prop.source === 'homesteps-freddie-mac';
   const confidencePct = Math.round((val.confidence_score || 0) * 100);
 
   return (
@@ -53,6 +54,14 @@ export default function PropertyCard({ deal }) {
               ⚠️ Demo data
             </span>
           )}
+          {isReo && (
+            <span
+              className="reo-badge"
+              title="Real Freddie Mac REO listing from HomeSteps (homesteps.com). Bank-owned; sqft estimated from room count."
+            >
+              🏦 Freddie Mac REO
+            </span>
+          )}
         </div>
         <div className="deal-badge">
           <div className="deal-score-circle">{Math.round(deal_score)}</div>
@@ -64,7 +73,14 @@ export default function PropertyCard({ deal }) {
       <div className="property-stats">
         <span className="prop-stat">🛏 <strong>{prop.bedrooms}</strong> Beds</span>
         <span className="prop-stat">🛁 <strong>{prop.bathrooms}</strong> Baths</span>
-        <span className="prop-stat">📐 <strong>{prop.sqft?.toLocaleString()}</strong> sqft</span>
+        <span
+          className="prop-stat"
+          title={prop.sqft_estimated
+            ? 'Square footage estimated from room count (HomeSteps publishes no sqft)'
+            : undefined}
+        >
+          📐 <strong>{prop.sqft_estimated ? '~' : ''}{prop.sqft?.toLocaleString()}</strong> sqft{prop.sqft_estimated ? ' (est)' : ''}
+        </span>
         {prop.lot_sqft && (
           <span className="prop-stat">🌳 <strong>{(prop.lot_sqft / 43560).toFixed(2)}</strong> acres</span>
         )}
