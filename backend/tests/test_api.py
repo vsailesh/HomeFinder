@@ -25,7 +25,20 @@ class TestHealth:
     def test_cities(self, client):
         r = client.get("/api/cities")
         assert r.status_code == 200
-        assert len(r.json()["cities"]) > 0
+        cities = r.json()["cities"]
+        assert len(cities) > 0
+
+    def test_cities_joins_metro_trend(self, client):
+        """Baltimore matches the fixture metro; trend fields appear.
+        A city without a fixture metro omits them entirely."""
+        cities = client.get("/api/cities").json()["cities"]
+        balt = next(c for c in cities if c["name"] == "Baltimore")
+        assert balt["metro_appreciation_1y"] == round(
+            311200 / 314000 - 1, 4)
+        assert balt["metro_median_list_price"] == 372000
+        assert balt["metro_as_of"] == "2026-08-31"
+        bethesda = next(c for c in cities if c["name"] == "Bethesda")
+        assert "metro_appreciation_1y" not in bethesda
 
 
 class TestSearch:

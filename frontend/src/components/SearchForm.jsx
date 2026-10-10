@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+// Fallback when /api/cities is unreachable.
 const CITIES = [
   { name: 'Baltimore', state: 'MD', county: 'Baltimore City' },
   { name: 'Columbia', state: 'MD', county: 'Howard County' },
@@ -12,6 +13,13 @@ const CITIES = [
   { name: 'Frederick', state: 'MD', county: 'Frederick County' },
   { name: 'Bowie', state: 'MD', county: "Prince George's County" },
 ];
+
+function cityLabel(c) {
+  const apprec = c.metro_appreciation_1y;
+  if (apprec == null) return c.name;
+  const arrow = apprec >= 0 ? '▲' : '▼';
+  return `${c.name} ${arrow}${Math.abs(apprec * 100).toFixed(1)}%/yr`;
+}
 
 /** Strip empty/false values so they don't hit the query string. */
 export function cleanParams(specs) {
@@ -49,6 +57,18 @@ export const DEFAULT_SPECS = {
 
 export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) {
   const [expanded, setExpanded] = useState(true);
+  const [cities, setCities] = useState(CITIES);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/cities')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data?.cities?.length) setCities(data.cities);
+      })
+      .catch(() => {/* keep fallback list */});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -90,8 +110,10 @@ export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) 
               <label htmlFor="city-select">City</label>
               <select id="city-select" name="city" value={specs.city} onChange={handleChange}>
                 <option value="">All Cities</option>
-                {CITIES.map(c => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
+                {cities.map(c => (
+                  <option key={c.name} value={c.name} title={c.metro_as_of ? `Metro trend as of ${c.metro_as_of} (Zillow Research)` : undefined}>
+                    {cityLabel(c)}
+                  </option>
                 ))}
               </select>
             </div>
@@ -100,7 +122,7 @@ export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) 
               <label htmlFor="county-select">County</label>
               <select id="county-select" name="county" value={specs.county} onChange={handleChange}>
                 <option value="">All Counties</option>
-                {[...new Set(CITIES.map(c => c.county))].map(co => (
+                {[...new Set(cities.map(c => c.county))].map(co => (
                   <option key={co} value={co}>{co}</option>
                 ))}
               </select>

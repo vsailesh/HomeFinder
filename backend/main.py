@@ -14,7 +14,7 @@ from optimizer import optimize_search
 from data_pipeline import get_all_cities, get_property_by_id
 from valuation_engine import valuate_property
 from loan_engine import get_market_base_rate, quote_loan
-from market_baselines import get_baselines_snapshot
+from market_baselines import get_baselines_snapshot, get_metro_baseline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,8 +49,20 @@ async def root():
 
 @app.get("/api/cities")
 async def list_cities():
-    """List all supported cities with market data."""
-    return {"cities": get_all_cities()}
+    """List all supported cities with market data, joined with the
+    real metro trend from Zillow Research where available."""
+    cities = []
+    for city in get_all_cities():
+        baseline = get_metro_baseline(city["name"], city["state"])
+        entry = dict(city)
+        if baseline:
+            entry["metro_appreciation_1y"] = baseline.get(
+                "appreciation_1y")
+            entry["metro_median_list_price"] = baseline.get(
+                "median_list_price")
+            entry["metro_as_of"] = baseline.get("as_of")
+        cities.append(entry)
+    return {"cities": cities}
 
 
 @app.get("/api/market/baselines")
