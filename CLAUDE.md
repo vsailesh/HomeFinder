@@ -10,6 +10,7 @@ Real estate analysis tool with Python backend + Next.js frontend.
   - `optimizer.py` - Investment optimization algorithms
   - `data_pipeline.py` - ETL pipeline + mock generator + listings cache
   - `loan_engine.py` - Mortgage rate/payment quotes (live FRED base rate)
+  - `market_baselines.py` - Per-metro appreciation/list-price baselines (Zillow Research public CSVs, no key)
 - `frontend/` - Next.js web application
   - `src/` - React components
 - `file-lister/` - File listing utility

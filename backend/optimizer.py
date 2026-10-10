@@ -13,11 +13,12 @@ from models import (
 from valuation_engine import valuate_property, ValuationError
 from data_pipeline import fetch_live_listings, get_market_sqft_price
 from loan_engine import get_market_base_rate
+from market_baselines import get_appreciation
 
 logger = logging.getLogger(__name__)
 
-# Long-run national average appreciation used for the 5yr ROI projection.
-# Rough heuristic, not market-specific.
+# Fallback appreciation for the 5yr ROI projection when the search metro
+# has no match in Zillow Research data (or the data is unreachable).
 APPRECIATION_ASSUMPTION = 0.035
 
 
@@ -41,9 +42,12 @@ def _calculate_monthly_payment(price: float, down_pct: float = 0.20,
     return round(payment, 2)
 
 
-def _estimate_5yr_roi(prop: Property, estimated_value: float) -> float:
+def _estimate_5yr_roi(prop: Property, estimated_value: float,
+                      appreciation: Optional[float] = None) -> float:
     """Rough 5-year ROI estimate based on appreciation + equity."""
-    future_value = estimated_value * (1 + APPRECIATION_ASSUMPTION) ** 5
+    if appreciation is None:
+        appreciation = APPRECIATION_ASSUMPTION
+    future_value = estimated_value * (1 + appreciation) ** 5
     down_payment = prop.list_price * 0.20
     equity_gained = future_value - prop.list_price
     roi = (equity_gained / max(down_payment, 1)) * 100
@@ -134,7 +138,8 @@ def _build_risks(prop: Property, val: ValuationResult) -> List[str]:
     return risks if risks else ["No significant risks identified"]
 
 
-def score_deal(prop: Property, val: ValuationResult) -> DealScore:
+def score_deal(prop: Property, val: ValuationResult,
+               appreciation: Optional[float] = None) -> DealScore:
     """
     Score a single property deal on a 0-100 scale.
     Higher = better deal.
@@ -214,7 +219,8 @@ def score_deal(prop: Property, val: ValuationResult) -> DealScore:
         reasons=_build_reasons(prop, val),
         risk_factors=_build_risks(prop, val),
         monthly_payment_estimate=_calculate_monthly_payment(prop.list_price),
-        estimated_roi_5yr=_estimate_5yr_roi(prop, val.estimated_value),
+        estimated_roi_5yr=_estimate_5yr_roi(
+            prop, val.estimated_value, appreciation),
     )
 
 
@@ -229,6 +235,20 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         page_size = 1
     page_size = min(page_size, 100)
     area_name = specs.city or specs.county or specs.state or "the search area"
+
+    # Real trailing-12mo appreciation for the metro when Zillow Research
+    # has it; otherwise the national default.
+    metro_appreciation = get_appreciation(specs.city, specs.state)
+    if metro_appreciation is not None:
+        logger.info("Using Zillow Research metro appreciation %.1f%% for %s",
+                    metro_appreciation * 100, area_name)
+    appreciation_meta = {
+        "value": (metro_appreciation
+                  if metro_appreciation is not None
+                  else APPRECIATION_ASSUMPTION),
+        "source": ("zillow-research-metro" if metro_appreciation is not None
+                   else "national-default"),
+    }
 
     # Fetch listings
     properties = fetch_live_listings(specs, count=60)
@@ -266,7 +286,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         except ValuationError as e:
             logger.warning("Skipping property %s in search: %s", prop.id, e)
             continue
-        deal = score_deal(prop, val)
+        deal = score_deal(prop, val, appreciation=metro_appreciation)
         deals.append(deal)
 
         all_prices.append(prop.list_price)
@@ -334,4 +354,5 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         "page": current_page,
         "page_size": page_size,
         "search_specs": specs.model_dump(),
+        "appreciation_assumption": appreciation_meta,
     }

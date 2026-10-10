@@ -165,6 +165,32 @@ class TestPagination:
         assert prices == sorted(prices)
 
 
+class TestAppreciation:
+    def test_metro_appreciation_wired_into_response(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr("optimizer.get_appreciation",
+                            lambda city, state: 0.10)
+        result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        meta = result["appreciation_assumption"]
+        assert meta == {"value": 0.10, "source": "zillow-research-metro"}
+
+    def test_default_when_metro_unknown(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr("optimizer.get_appreciation",
+                            lambda city, state: None)
+        result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        meta = result["appreciation_assumption"]
+        assert meta["source"] == "national-default"
+        assert meta["value"] > 0
+
+    def test_higher_appreciation_raises_roi(self):
+        prop = make_property(list_price=300000)
+        val = valuate_property(prop)
+        low = _estimate_5yr_roi(prop, val.estimated_value, appreciation=0.0)
+        high = _estimate_5yr_roi(prop, val.estimated_value, appreciation=0.10)
+        assert high > low
+
+
 class TestValuation:
     def test_rejects_zero_sqft(self):
         with pytest.raises(Exception):
