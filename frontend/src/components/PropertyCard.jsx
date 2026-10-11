@@ -137,7 +137,7 @@ export default function PropertyCard({ deal }) {
         </div>
         {estimated_rent != null && (
           <div
-            title="Metro-typical rent (Zillow ZORI, single-family). Cashflow = rent − P&I payment estimate; excludes tax/insurance/HOA."
+            title="Typical rent for this ZIP (Zillow ZORI; metro-level when the ZIP isn't published). Cashflow = rent − P&I payment estimate; excludes tax/insurance/HOA."
           >
             <div className="monthly-label">Est. Rent (metro)</div>
             <div className="monthly-value">{formatCurrency(estimated_rent)}/mo</div>

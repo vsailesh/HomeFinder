@@ -1,5 +1,6 @@
 """Tests for Zillow Research market baselines."""
 import pytest
+import time
 
 import market_baselines as mb
 from conftest import ZHVI_FIXTURE
@@ -124,3 +125,21 @@ class TestSnapshot:
         entry = snap["metros"]["Baltimore, MD"]
         assert entry["median_list_price"] == 372000
         assert entry["as_of"] == "2026-08-31"
+
+
+class TestZipRent:
+    def test_lookup_and_rounding(self, monkeypatch):
+        monkeypatch.setattr(mb, "_zip_rent_cache",
+                            {"21223": 1607.557, "21201": 1500.28})
+        monkeypatch.setattr(mb, "_zip_rent_ts", time.time())
+        assert mb.get_zip_rent("21223") == 1608
+        assert mb.get_zip_rent(" 21201 ") == 1500
+        assert mb.get_zip_rent("99999") is None
+        assert mb.get_zip_rent(None) is None
+
+    def test_parse_accepts_zip_rows(self):
+        csv_text = ("RegionID,SizeRank,RegionName,RegionType,StateName,"
+                    "2026-08-31\n"
+                    '1,1,"21223",zip,MD,1607.5\n')
+        out = mb._parse_series_csv(csv_text)
+        assert out["21223"]["latest"] == 1607.5

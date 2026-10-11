@@ -13,7 +13,7 @@ from models import (
 from valuation_engine import valuate_property, ValuationError
 from data_pipeline import fetch_live_listings, get_market_sqft_price
 from loan_engine import get_market_base_rate
-from market_baselines import get_metro_baseline
+from market_baselines import get_metro_baseline, get_zip_rent
 
 logger = logging.getLogger(__name__)
 
@@ -206,13 +206,15 @@ def score_deal(prop: Property, val: ValuationResult,
     if prop.hoa_fee and prop.hoa_fee > 300:
         score -= 3
 
-    # Rental yield (metro rent vs P&I payment) — an investment-relevant
-    # signal that survives even without comps. +/- 6 points.
+    # Rental yield — ZIP-level rent when Zillow publishes one for the
+    # listing (much sharper than metro; metro as fallback). Coverage of
+    # the P&I payment is the investment signal. +/- 6 points.
     payment = _calculate_monthly_payment(prop.list_price)
+    rent = get_zip_rent(prop.zip_code) or metro_rent
     cashflow = None
-    if metro_rent is not None:
-        cashflow = round(metro_rent - payment, 2)
-        coverage = metro_rent / max(payment, 1)
+    if rent is not None:
+        cashflow = round(rent - payment, 2)
+        coverage = rent / max(payment, 1)
         if coverage >= 2.0:
             score += 6
         elif coverage >= 1.0:
@@ -229,8 +231,8 @@ def score_deal(prop: Property, val: ValuationResult,
     reasons = _build_reasons(prop, val)
     if cashflow is not None and cashflow > 0:
         reasons.insert(
-            0, f"Metro rent covers P&I with +${cashflow:,.0f}/mo "
-               f"cashflow (rent yield signal)")
+            0, f"Rent covers P&I with +${cashflow:,.0f}/mo cashflow "
+               f"(rent yield signal)")
 
     return DealScore(
         property=prop,
@@ -242,7 +244,7 @@ def score_deal(prop: Property, val: ValuationResult,
         monthly_payment_estimate=payment,
         estimated_roi_5yr=_estimate_5yr_roi(
             prop, val.estimated_value, appreciation),
-        estimated_rent=metro_rent,
+        estimated_rent=rent,
         estimated_monthly_cashflow=cashflow,
     )
 

@@ -264,3 +264,18 @@ class TestCashflowScoring:
     def test_no_rent_no_cashflow_reason(self, monkeypatch):
         _, deal = self._deal(monkeypatch, rent=None, list_price=300000)
         assert not any("cashflow" in r for r in deal.reasons)
+
+
+class TestZipRentPreference:
+    def test_zip_rent_beats_metro(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline",
+            lambda city, state: {"appreciation_1y": 0.01,
+                                 "typical_rent": 2502.0})
+        monkeypatch.setattr("optimizer.get_zip_rent", lambda z: 1608.0)
+        result = optimize_search(SearchSpecs(city="Bethesda", state="MD"))
+        deal = result["deals"][0]
+        assert deal["estimated_rent"] == 1608.0  # ZIP, not metro 2502
+        assert deal["estimated_monthly_cashflow"] == round(
+            1608.0 - deal["monthly_payment_estimate"], 2)

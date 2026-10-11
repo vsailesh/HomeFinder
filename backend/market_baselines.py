@@ -32,6 +32,8 @@ MLP_URL = ("https://files.zillowstatic.com/research/public_csvs/mlp/"
            "Metro_mlp_uc_sfrcondo_sm_month.csv")
 ZORI_URL = ("https://files.zillowstatic.com/research/public_csvs/zori/"
             "Metro_zori_uc_sfr_sm_month.csv")  # typical rent, SFR
+ZORI_ZIP_URL = ("https://files.zillowstatic.com/research/public_csvs/zori/"
+                "Zip_zori_uc_sfrcondomfr_sm_month.csv")  # rent by ZIP
 
 _BASE_URLS = {"zhvi": ZHVI_URL, "mlp": MLP_URL, "zori": ZORI_URL}
 
@@ -55,6 +57,11 @@ _lock = threading.Lock()
 _cache: Optional[Dict] = None
 _cache_ts: float = 0.0
 
+# ZIP-level rents (ZORI) — fetched lazily (10 MB file) on first use,
+# then cached like the metro series.
+_zip_rent_cache: Optional[Dict[str, float]] = None
+_zip_rent_ts: float = 0.0
+
 
 def _parse_series_csv(text: str) -> Dict[str, Dict]:
     """Parse a Zillow Research time-series CSV into
@@ -69,7 +76,8 @@ def _parse_series_csv(text: str) -> Dict[str, Dict]:
     out: Dict[str, Dict] = {}
     for row in reader:
         region = (row.get("RegionName") or "").strip()
-        if not region or (row.get("RegionType") or "") not in ("metro", "msa"):
+        if not region or (row.get("RegionType") or "") not in (
+                "metro", "msa", "zip"):
             continue
         dated = sorted(
             (k, v) for k, v in row.items()
@@ -195,6 +203,38 @@ def get_metro_baseline(city: Optional[str],
     """Full baseline entry (typical value, appreciation, median list
     price, as-of date) for the matching metro, or None."""
     return _lookup_metro(city, state)
+
+
+def _get_zip_rents() -> Dict[str, float]:
+    """{zip: latest typical rent} from the ZORI ZIP CSV (cached 24h).
+    Empty dict on failure — callers fall back to metro rent."""
+    global _zip_rent_cache, _zip_rent_ts
+    with _lock:
+        now = time.time()
+        if (_zip_rent_cache is not None
+                and now - _zip_rent_ts < _CACHE_TTL_SECONDS):
+            return _zip_rent_cache
+        try:
+            resp = requests.get(ZORI_ZIP_URL, timeout=_HTTP_TIMEOUT)
+            resp.raise_for_status()
+            rents = {region: vals["latest"]
+                     for region, vals in
+                     _parse_series_csv(resp.text).items()}
+        except Exception:
+            logger.exception("ZORI ZIP fetch failed")
+            rents = _zip_rent_cache or {}
+        _zip_rent_cache = rents
+        _zip_rent_ts = now
+        return rents
+
+
+def get_zip_rent(zip_code: Optional[str]) -> Optional[float]:
+    """Latest typical rent for the ZIP, or None. Sharper than the
+    metro figure (e.g. Baltimore 21223 ~$1.6k vs metro ~$2.5k)."""
+    if not zip_code:
+        return None
+    rent = _get_zip_rents().get(zip_code.strip())
+    return round(rent) if rent else None
 
 
 def get_baselines_snapshot() -> Dict:

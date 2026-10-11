@@ -41,4 +41,8 @@ def stub_market_baselines(monkeypatch):
     import data_pipeline as dp
     monkeypatch.setattr(dp, "fetch_homesteps_properties",
                         lambda city, state, zip_code=None: [])
+
+    # ZIP-level rents: offline by default (tests override as needed).
+    import optimizer as opt_mod
+    monkeypatch.setattr(opt_mod, "get_zip_rent", lambda z: None)
     yield
