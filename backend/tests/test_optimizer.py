@@ -349,6 +349,55 @@ class TestMarketHeatScoring:
         assert any("negotiating leverage" in r for r in deal["reasons"])
 
 
+class TestRentCoverageFilter:
+    """min_rent_coverage drops deals whose rent can't cover the P&I
+    payment multiple — including deals with no rent data at all."""
+
+    def test_filters_below_threshold(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline", lambda city, state: None)
+        # $4k rent covers P&I only on cheaper listings (Columbia mock
+        # prices span $219k-$1.36M) -> a real keep/drop mix.
+        monkeypatch.setattr("optimizer.get_zip_rent", lambda z: 4000.0)
+        full = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        result = optimize_search(SearchSpecs(
+            city="Columbia", state="MD", min_rent_coverage=1.0))
+        assert 0 < result["total_results"] < full["total_results"]
+        for d in result["deals"]:
+            coverage = d["estimated_rent"] / d["monthly_payment_estimate"]
+            assert coverage >= 1.0
+
+    def test_no_rent_data_deals_dropped(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline", lambda city, state: None)
+        monkeypatch.setattr("optimizer.get_zip_rent", lambda z: None)
+        result = optimize_search(SearchSpecs(
+            city="Columbia", state="MD", min_rent_coverage=1.0))
+        assert result["deals"] == []
+        assert result["total_results"] == 0
+
+    def test_no_filter_keeps_everything(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline", lambda city, state: None)
+        monkeypatch.setattr("optimizer.get_zip_rent", lambda z: None)
+        unfiltered = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        assert unfiltered["total_results"] > 0
+
+    def test_stats_reflect_filtered_set(self, monkeypatch):
+        """Market stats describe what's shown, not the pre-filter pool."""
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline", lambda city, state: None)
+        monkeypatch.setattr("optimizer.get_zip_rent", lambda z: 900.0)
+        result = optimize_search(SearchSpecs(
+            city="Columbia", state="MD", min_rent_coverage=1.0))
+        assert result["market_stats"]["total_listings"] == \
+            result["total_results"]
+
+
 class TestCashflowSort:
     def test_sorted_by_cashflow_desc(self, monkeypatch):
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)

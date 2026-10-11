@@ -52,6 +52,7 @@ export const DEFAULT_SPECS = {
   must_have_basement: false,
   must_have_garage: false,
   max_days_on_market: '',
+  min_rent_coverage: '',
   sort_by: 'deal_score',
 };
 
@@ -209,6 +210,20 @@ export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) 
               <label htmlFor="max-dom">Max Days on Market</label>
               <input id="max-dom" name="max_days_on_market" type="number"
                 placeholder="Any" value={specs.max_days_on_market} onChange={handleChange} />
+            </div>
+
+            {/* Investor filter */}
+            <div className="form-group">
+              <label htmlFor="min-coverage"
+                title="Keep only listings where the typical rent covers at least this multiple of the estimated P&I payment (1.0x = breakeven). Needs rent data for the ZIP or metro.">
+                Min Rent / Payment
+              </label>
+              <select id="min-coverage" name="min_rent_coverage" value={specs.min_rent_coverage} onChange={handleChange}>
+                <option value="">Any</option>
+                {[0.8, 1.0, 1.25, 1.5, 2.0].map(r => (
+                  <option key={r} value={r}>{r}x coverage</option>
+                ))}
+              </select>
             </div>
 
             {/* Checkboxes */}

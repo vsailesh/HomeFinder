@@ -91,6 +91,10 @@ class SearchSpecs(BaseModel):
     must_have_basement: bool = False
     must_have_garage: bool = False
     max_days_on_market: Optional[int] = None
+    # Investor filter: keep only deals where estimated rent covers at
+    # least this multiple of the P&I payment estimate (1.0 = breakeven).
+    # Applied after scoring — rent is per-listing data.
+    min_rent_coverage: Optional[float] = Field(default=None, ge=0)
     sort_by: str = "deal_score"  # deal_score, price_asc, price_desc, newest, cashflow_desc
 
 

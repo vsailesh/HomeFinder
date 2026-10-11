@@ -358,10 +358,6 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
     # Valuate and score each property; skip (rather than crash on) any
     # listing the valuation engine rejects.
     deals: List[DealScore] = []
-    all_prices = []
-    all_ppsf = []
-    all_dom = []
-    all_year = []
 
     for prop in properties:
         try:
@@ -373,12 +369,28 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
                           metro_rent=metro_rent, market_heat=market_heat)
         deals.append(deal)
 
-        all_prices.append(prop.list_price)
-        all_ppsf.append(prop.list_price / max(prop.sqft, 1))
-        if prop.days_on_market is not None:
-            all_dom.append(prop.days_on_market)
-        if prop.year_built:
-            all_year.append(prop.year_built)
+    # Investor filter: keep only deals whose estimated rent covers at
+    # least min_rent_coverage x the P&I payment. Deals with no rent
+    # data can't demonstrate coverage — dropped too.
+    if specs.min_rent_coverage is not None:
+        before = len(deals)
+        deals = [
+            d for d in deals
+            if d.estimated_rent is not None
+            and d.estimated_rent / max(d.monthly_payment_estimate, 1)
+            >= specs.min_rent_coverage
+        ]
+        logger.info("Rent coverage >= %.2fx: %d of %d deals kept",
+                    specs.min_rent_coverage, len(deals), before)
+
+    # Stats describe the filtered result set, so derive them here.
+    all_prices = [d.property.list_price for d in deals]
+    all_ppsf = [d.property.list_price / max(d.property.sqft, 1)
+                for d in deals]
+    all_dom = [d.property.days_on_market for d in deals
+               if d.property.days_on_market is not None]
+    all_year = [d.property.year_built for d in deals
+                if d.property.year_built]
 
     if not deals:
         return {

@@ -94,6 +94,7 @@ async def search_properties(
     must_have_basement: bool = False,
     must_have_garage: bool = False,
     max_days_on_market: Optional[int] = None,
+    min_rent_coverage: Optional[float] = Query(default=None, ge=0),
     sort_by: str = "deal_score",
     page: Optional[int] = Query(default=None, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -132,6 +133,7 @@ async def search_properties(
         must_have_basement=must_have_basement,
         must_have_garage=must_have_garage,
         max_days_on_market=max_days_on_market,
+        min_rent_coverage=min_rent_coverage,
         sort_by=sort_by,
     )
 
