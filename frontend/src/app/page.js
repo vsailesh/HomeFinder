@@ -222,6 +222,7 @@ export default function HomePage() {
             <div className="sort-controls">
               {[
                 { key: 'deal_score', label: '🏆 Best Deals' },
+                { key: 'cashflow_desc', label: '💵 Cashflow ↓' },
                 { key: 'price_asc', label: '💰 Price ↑' },
                 { key: 'price_desc', label: '💰 Price ↓' },
                 { key: 'newest', label: '🆕 Newest' },

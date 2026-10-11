@@ -353,6 +353,12 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         deals.sort(key=lambda d: d.property.list_price, reverse=True)
     elif sort_key == "newest":
         deals.sort(key=lambda d: d.property.days_on_market or 999)
+    elif sort_key == "cashflow_desc":
+        deals.sort(
+            key=lambda d: (d.estimated_monthly_cashflow
+                           if d.estimated_monthly_cashflow is not None
+                           else float("-inf")),
+            reverse=True)
 
     # Build market stats (computed from the actual result set — no
     # fabricated trend numbers)

@@ -91,7 +91,7 @@ class SearchSpecs(BaseModel):
     must_have_basement: bool = False
     must_have_garage: bool = False
     max_days_on_market: Optional[int] = None
-    sort_by: str = "deal_score"  # deal_score, price_asc, price_desc, newest
+    sort_by: str = "deal_score"  # deal_score, price_asc, price_desc, newest, cashflow_desc
 
 
 class PriceVariable(BaseModel):

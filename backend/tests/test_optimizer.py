@@ -279,3 +279,21 @@ class TestZipRentPreference:
         assert deal["estimated_rent"] == 1608.0  # ZIP, not metro 2502
         assert deal["estimated_monthly_cashflow"] == round(
             1608.0 - deal["monthly_payment_estimate"], 2)
+
+
+class TestCashflowSort:
+    def test_sorted_by_cashflow_desc(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        from data_pipeline import generate_mock_listings
+        props = generate_mock_listings(
+            SearchSpecs(city="Columbia", state="MD"), count=20)
+        monkeypatch.setattr(
+            "optimizer.fetch_live_listings", lambda specs, count=60: props)
+        # Deterministic rent ladder: cheapest listing -> biggest cashflow
+        monkeypatch.setattr(
+            "optimizer.get_zip_rent",
+            lambda z: 99999.0 / max(p.list_price for p in props) * 100)
+        result = optimize_search(
+            SearchSpecs(city="Columbia", state="MD", sort_by="cashflow_desc"))
+        cfs = [d["estimated_monthly_cashflow"] for d in result["deals"]]
+        assert cfs == sorted(cfs, reverse=True)
