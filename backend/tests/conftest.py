@@ -24,6 +24,24 @@ ZORI_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,2
 394913,2,"Houston, TX",msa,TX,1900,1890,1880
 """
 
+SALE_TO_LIST_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,2026-07-31,2026-08-31
+102001,0,United States,country,,0.990,0.991,0.992
+394913,1,"Baltimore, MD",msa,MD,0.985,0.988,0.990
+394913,3,"Washington, DC",msa,DC,1.001,1.002,1.003
+"""
+
+PRICE_CUT_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,2026-07-31,2026-08-31
+102001,0,United States,country,,0.280,0.285,0.290
+394913,1,"Baltimore, MD",msa,MD,0.310,0.315,0.320
+394913,3,"Washington, DC",msa,DC,0.250,0.255,0.260
+"""
+
+DAYS_PENDING_FIXTURE = """RegionID,SizeRank,RegionName,RegionType,StateName,2026-06-30,2026-07-31,2026-08-31
+102001,0,United States,country,,15.0,14.0,13.0
+394913,1,"Baltimore, MD",msa,MD,17.0,16.0,15.0
+394913,3,"Washington, DC",msa,DC,12.0,11.0,10.0
+"""
+
 
 @pytest.fixture(autouse=True)
 def stub_market_baselines(monkeypatch):
@@ -32,7 +50,10 @@ def stub_market_baselines(monkeypatch):
     def fake_fetch():
         return {"zhvi": mb._parse_series_csv(ZHVI_FIXTURE),
                 "mlp": mb._parse_series_csv(MLP_FIXTURE),
-                "zori": mb._parse_series_csv(ZORI_FIXTURE)}
+                "zori": mb._parse_series_csv(ZORI_FIXTURE),
+                "sale_to_list": mb._parse_series_csv(SALE_TO_LIST_FIXTURE),
+                "price_cuts": mb._parse_series_csv(PRICE_CUT_FIXTURE),
+                "days_pending": mb._parse_series_csv(DAYS_PENDING_FIXTURE)}
 
     monkeypatch.setattr(mb, "_fetch_series", fake_fetch)
     monkeypatch.setattr(mb, "_cache", None)

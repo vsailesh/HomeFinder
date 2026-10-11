@@ -197,6 +197,39 @@ export default function HomePage() {
                   <div className="market-stat-label">Metro Median List</div>
                 </div>
               )}
+              {baseline?.sale_to_list_ratio != null && (
+                <div
+                  className="market-stat-card"
+                  title={`Median sale price as a share of list price (Zillow Research, as of ${baseline.as_of}). Above 100% = homes sell over asking.`}
+                >
+                  <div className={`market-stat-value ${baseline.sale_to_list_ratio >= 1 ? 'trend-up' : 'trend-down'}`}>
+                    {(baseline.sale_to_list_ratio * 100).toFixed(1)}%
+                  </div>
+                  <div className="market-stat-label">Sale-to-List</div>
+                </div>
+              )}
+              {baseline?.pct_listings_price_cut != null && (
+                <div
+                  className="market-stat-card"
+                  title={`Share of listings with a price cut (Zillow Research, as of ${baseline.as_of}). Higher = softer market.`}
+                >
+                  <div className="market-stat-value">
+                    {(baseline.pct_listings_price_cut * 100).toFixed(0)}%
+                  </div>
+                  <div className="market-stat-label">Price Cuts</div>
+                </div>
+              )}
+              {baseline?.median_days_to_pending != null && (
+                <div
+                  className="market-stat-card"
+                  title={`Median days from listing to pending sale (Zillow Research, as of ${baseline.as_of}). Lower = hotter market.`}
+                >
+                  <div className="market-stat-value">
+                    {Math.round(baseline.median_days_to_pending)}d
+                  </div>
+                  <div className="market-stat-label">Days to Pending</div>
+                </div>
+              )}
             </div>
           )}
 

@@ -117,6 +117,35 @@ class TestGetMetroBaseline:
         assert mb.get_metro_baseline("Nowhereville", "ZZ") is None
 
 
+class TestMarketHeat:
+    """Sale-to-list ratio, price-cut share, days-to-pending — merged
+    into metro entries when their series loaded, absent otherwise."""
+
+    def test_heat_fields_merged(self):
+        entry = mb.get_metro_baseline("Baltimore", "MD")
+        assert entry["sale_to_list_ratio"] == 0.99
+        assert entry["pct_listings_price_cut"] == 0.32
+        assert entry["median_days_to_pending"] == 15.0
+
+    def test_heat_fields_absent_when_series_missing(self, monkeypatch):
+        monkeypatch.setattr(
+            mb, "_fetch_series",
+            lambda: {"zhvi": mb._parse_series_csv(ZHVI_FIXTURE)})
+        monkeypatch.setattr(mb, "_cache", None)
+        entry = mb.get_metro_baseline("Baltimore", "MD")
+        assert entry is not None
+        assert entry["typical_value"] == 311200  # core survives
+        assert "sale_to_list_ratio" not in entry
+        assert "pct_listings_price_cut" not in entry
+        assert "median_days_to_pending" not in entry
+
+    def test_no_zhvi_means_no_baseline(self, monkeypatch):
+        """Core series gone -> empty result, not a partial baseline."""
+        monkeypatch.setattr(mb, "_fetch_series", lambda: {})
+        monkeypatch.setattr(mb, "_cache", None)
+        assert mb.get_metro_baseline("Baltimore", "MD") is None
+
+
 class TestSnapshot:
     def test_snapshot_shape(self):
         snap = mb.get_baselines_snapshot()
@@ -125,6 +154,7 @@ class TestSnapshot:
         entry = snap["metros"]["Baltimore, MD"]
         assert entry["median_list_price"] == 372000
         assert entry["as_of"] == "2026-08-31"
+        assert entry["median_days_to_pending"] == 15.0
 
 
 class TestZipRent:

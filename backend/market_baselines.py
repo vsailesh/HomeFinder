@@ -34,8 +34,21 @@ ZORI_URL = ("https://files.zillowstatic.com/research/public_csvs/zori/"
             "Metro_zori_uc_sfr_sm_month.csv")  # typical rent, SFR
 ZORI_ZIP_URL = ("https://files.zillowstatic.com/research/public_csvs/zori/"
                 "Zip_zori_uc_sfrcondomfr_sm_month.csv")  # rent by ZIP
+SALE_TO_LIST_URL = ("https://files.zillowstatic.com/research/public_csvs/"
+                    "median_sale_to_list/"
+                    "Metro_median_sale_to_list_uc_sfrcondo_sm_month.csv")
+PRICE_CUT_URL = ("https://files.zillowstatic.com/research/public_csvs/"
+                 "perc_listings_price_cut/"
+                 "Metro_perc_listings_price_cut_uc_sfrcondo_sm_month.csv")
+DAYS_PENDING_URL = ("https://files.zillowstatic.com/research/public_csvs/"
+                    "med_doz_pending/"
+                    "Metro_med_doz_pending_uc_sfrcondo_sm_month.csv")
 
-_BASE_URLS = {"zhvi": ZHVI_URL, "mlp": MLP_URL, "zori": ZORI_URL}
+_BASE_URLS = {
+    "zhvi": ZHVI_URL, "mlp": MLP_URL, "zori": ZORI_URL,
+    "sale_to_list": SALE_TO_LIST_URL, "price_cuts": PRICE_CUT_URL,
+    "days_pending": DAYS_PENDING_URL,
+}
 
 _CACHE_TTL_SECONDS = 24 * 60 * 60  # Zillow publishes monthly; refresh daily
 _HTTP_TIMEOUT = 60
@@ -103,13 +116,18 @@ def _parse_series_csv(text: str) -> Dict[str, Dict]:
 
 
 def _fetch_series() -> Dict[str, Dict[str, Dict]]:
-    """Download and parse both CSVs. Raises on network/HTTP failure."""
+    """Download and parse every series. Individual failures are logged
+    and skipped — the rest of the baseline still loads."""
     series: Dict[str, Dict[str, Dict]] = {}
     for name, url in _BASE_URLS.items():
-        resp = requests.get(url, timeout=_HTTP_TIMEOUT)
-        resp.raise_for_status()
-        series[name] = _parse_series_csv(resp.text)
-        logger.info("Loaded %d metro rows from %s", len(series[name]), name)
+        try:
+            resp = requests.get(url, timeout=_HTTP_TIMEOUT)
+            resp.raise_for_status()
+            series[name] = _parse_series_csv(resp.text)
+            logger.info("Loaded %d metro rows from %s",
+                        len(series[name]), name)
+        except Exception:
+            logger.exception("Baseline series '%s' fetch failed", name)
     return series
 
 
@@ -123,13 +141,18 @@ def _get_baselines(force_refresh: bool = False) -> Dict:
             return _cache
         try:
             fetched = _fetch_series()
-            zhvi, mlp, zori = (fetched["zhvi"], fetched["mlp"],
-                               fetched.get("zori", {}))
         except Exception:
             logger.exception("Zillow Research baseline fetch failed")
+            fetched = {}
+        zhvi = fetched.get("zhvi")
+        if not zhvi:
+            # Core series missing — no baseline at all (stale if we
+            # have it, empty otherwise).
             if _cache is not None:
-                return _cache  # serve stale rather than nothing
+                return _cache
             return {"metros": {}, "source": "zillow-research", "ok": False}
+        mlp = fetched.get("mlp", {})
+        zori = fetched.get("zori", {})
 
         metros = {}
         for region, vals in zhvi.items():
@@ -144,6 +167,15 @@ def _get_baselines(force_refresh: bool = False) -> Dict:
                 entry["median_list_price"] = round(mlp[region]["latest"])
             if region in zori:
                 entry["typical_rent"] = round(zori[region]["latest"])
+            for key, series in (
+                    ("sale_to_list_ratio",
+                     fetched.get("sale_to_list", {})),
+                    ("pct_listings_price_cut",
+                     fetched.get("price_cuts", {})),
+                    ("median_days_to_pending",
+                     fetched.get("days_pending", {}))):
+                if region in series:
+                    entry[key] = round(series[region]["latest"], 3)
             metros[region] = entry
         _cache = {
             "metros": metros,
