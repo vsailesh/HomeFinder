@@ -140,12 +140,19 @@ def _build_risks(prop: Property, val: ValuationResult) -> List[str]:
 
 def score_deal(prop: Property, val: ValuationResult,
                appreciation: Optional[float] = None,
-               metro_rent: Optional[float] = None) -> DealScore:
+               metro_rent: Optional[float] = None,
+               market_heat: Optional[dict] = None) -> DealScore:
     """
     Score a single property deal on a 0-100 scale.
     Higher = better deal.
+
+    market_heat carries the metro-level negotiation signals from
+    Zillow Research (pct_listings_price_cut, median_days_to_pending,
+    sale_to_list_ratio); None = unavailable, scoring skips them.
     """
     score = 50.0  # Start neutral
+    heat_reasons: List[str] = []
+    heat_risks: List[str] = []
 
     # Value gap (biggest factor: +/- 25 points)
     value_gap_pct = val.price_difference_pct
@@ -206,6 +213,49 @@ def score_deal(prop: Property, val: ValuationResult,
     if prop.hoa_fee and prop.hoa_fee > 300:
         score -= 3
 
+    # Market heat — metro-level negotiation signals. Small adjustments
+    # (net capped at +/-5) since they apply to every listing in the
+    # search equally; they shape strategy, not ranking much.
+    heat = market_heat or {}
+    heat_adj = 0.0
+    price_cuts = heat.get("pct_listings_price_cut")
+    if price_cuts is not None:
+        if price_cuts >= 0.30:
+            heat_adj += 3
+            heat_reasons.append(
+                f"Buyer's market: {price_cuts:.0%} of metro listings cut "
+                f"price — negotiating leverage")
+        elif price_cuts <= 0.15:
+            heat_adj -= 2
+            heat_risks.append(
+                f"Firm market: only {price_cuts:.0%} of metro listings "
+                f"cut price — sellers holding asking")
+    days_pending = heat.get("median_days_to_pending")
+    if days_pending is not None:
+        if days_pending >= 30:
+            heat_adj += 2
+            heat_reasons.append(
+                f"Slow market: median {days_pending:.0f} days to pending "
+                f"— sellers may flex on price")
+        elif days_pending <= 7:
+            heat_adj -= 2
+            heat_risks.append(
+                f"Fast market: median {days_pending:.0f} days to pending "
+                f"— expect competition")
+    stl = heat.get("sale_to_list_ratio")
+    if stl is not None:
+        if stl <= 0.98:
+            heat_adj += 2
+            heat_reasons.append(
+                f"Metro homes close {1 - stl:.1%} below list on median "
+                f"— below-asking offers common")
+        elif stl >= 1.02:
+            heat_adj -= 2
+            heat_risks.append(
+                f"Metro homes close {stl - 1:.1%} above list — bidding "
+                f"wars common")
+    score += max(-5.0, min(5.0, heat_adj))
+
     # Rental yield — ZIP-level rent when Zillow publishes one for the
     # listing (much sharper than metro; metro as fallback). Coverage of
     # the P&I payment is the investment signal. +/- 6 points.
@@ -229,10 +279,13 @@ def score_deal(prop: Property, val: ValuationResult,
     score = max(0, min(100, score))
 
     reasons = _build_reasons(prop, val)
+    reasons.extend(heat_reasons)
     if cashflow is not None and cashflow > 0:
         reasons.insert(
             0, f"Rent covers P&I with +${cashflow:,.0f}/mo cashflow "
                f"(rent yield signal)")
+    risks = _build_risks(prop, val)
+    risks.extend(heat_risks)
 
     return DealScore(
         property=prop,
@@ -240,7 +293,7 @@ def score_deal(prop: Property, val: ValuationResult,
         deal_score=round(score, 1),
         deal_grade=_grade_from_score(score),
         reasons=reasons,
-        risk_factors=_build_risks(prop, val),
+        risk_factors=risks,
         monthly_payment_estimate=payment,
         estimated_roi_5yr=_estimate_5yr_roi(
             prop, val.estimated_value, appreciation),
@@ -266,6 +319,9 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
     market_baseline = get_metro_baseline(specs.city, specs.state)
     metro_appreciation = (market_baseline or {}).get("appreciation_1y")
     metro_rent = (market_baseline or {}).get("typical_rent")
+    market_heat = {k: market_baseline[k] for k in (
+        "pct_listings_price_cut", "median_days_to_pending",
+        "sale_to_list_ratio") if k in (market_baseline or {})}
     if metro_appreciation is not None:
         logger.info("Using Zillow Research metro appreciation %.1f%% for %s",
                     metro_appreciation * 100, area_name)
@@ -314,7 +370,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
             logger.warning("Skipping property %s in search: %s", prop.id, e)
             continue
         deal = score_deal(prop, val, appreciation=metro_appreciation,
-                          metro_rent=metro_rent)
+                          metro_rent=metro_rent, market_heat=market_heat)
         deals.append(deal)
 
         all_prices.append(prop.list_price)

@@ -281,6 +281,74 @@ class TestZipRentPreference:
             1608.0 - deal["monthly_payment_estimate"], 2)
 
 
+class TestMarketHeatScoring:
+    """Metro negotiation signals (price cuts, pace, sale-to-list) shift
+    scores modestly and surface as reasons/risks."""
+
+    def _deal(self, monkeypatch, heat=None, **over):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        prop = make_property(**over)
+        return score_deal(prop, valuate_property(prop), market_heat=heat)
+
+    def test_soft_market_boosts(self, monkeypatch):
+        cold = self._deal(monkeypatch, heat=None, list_price=400000)
+        soft = self._deal(monkeypatch, heat={
+            "pct_listings_price_cut": 0.35,
+            "median_days_to_pending": 45,
+            "sale_to_list_ratio": 0.97,
+        }, list_price=400000, id="p2")
+        assert soft.deal_score > cold.deal_score
+        assert any("negotiating leverage" in r for r in soft.reasons)
+        assert any("below-asking" in r for r in soft.reasons)
+
+    def test_hot_market_penalizes(self, monkeypatch):
+        cold = self._deal(monkeypatch, heat=None, list_price=400000)
+        hot = self._deal(monkeypatch, heat={
+            "pct_listings_price_cut": 0.10,
+            "median_days_to_pending": 5,
+            "sale_to_list_ratio": 1.04,
+        }, list_price=400000, id="p3")
+        assert hot.deal_score < cold.deal_score
+        assert any("competition" in r for r in hot.risk_factors)
+        assert any("bidding" in r for r in hot.risk_factors)
+
+    def test_adjustment_capped(self, monkeypatch):
+        cold = self._deal(monkeypatch, heat=None, list_price=400000)
+        extreme = self._deal(monkeypatch, heat={
+            "pct_listings_price_cut": 0.9,
+            "median_days_to_pending": 365,
+            "sale_to_list_ratio": 0.5,
+        }, list_price=400000, id="p4")
+        # Raw signals sum to +7; the cap holds the weighted delta at +5
+        # (same property -> same confidence weight, no clamping here).
+        assert 0 < extreme.deal_score - cold.deal_score <= 5.0
+
+    def test_neutral_heat_no_change(self, monkeypatch):
+        none = self._deal(monkeypatch, heat=None, list_price=400000)
+        mid = self._deal(monkeypatch, heat={
+            "pct_listings_price_cut": 0.22,
+            "median_days_to_pending": 14,
+            "sale_to_list_ratio": 1.0,
+        }, list_price=400000, id="p5")
+        assert mid.deal_score == none.deal_score
+        heat_phrases = ("buyer's market", "firm market", "slow market",
+                        "fast market", "below-asking", "bidding")
+        assert not any(p in r.lower() for r in mid.reasons
+                       for p in heat_phrases)
+
+    def test_wired_into_search(self, monkeypatch):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        monkeypatch.setattr(
+            "optimizer.get_metro_baseline",
+            lambda city, state: {"appreciation_1y": 0.01,
+                                 "pct_listings_price_cut": 0.40,
+                                 "median_days_to_pending": 50,
+                                 "sale_to_list_ratio": 0.96})
+        result = optimize_search(SearchSpecs(city="Columbia", state="MD"))
+        deal = result["deals"][0]
+        assert any("negotiating leverage" in r for r in deal["reasons"])
+
+
 class TestCashflowSort:
     def test_sorted_by_cashflow_desc(self, monkeypatch):
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
