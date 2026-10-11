@@ -434,9 +434,11 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
     elif sort_key == "newest":
         deals.sort(key=lambda d: d.property.days_on_market or 999)
     elif sort_key == "cashflow_desc":
+        # Net of full carry (PITI+HOA) — the honest number. Deals
+        # without rent data sink to the bottom.
         deals.sort(
-            key=lambda d: (d.estimated_monthly_cashflow
-                           if d.estimated_monthly_cashflow is not None
+            key=lambda d: (d.net_monthly_cashflow
+                           if d.net_monthly_cashflow is not None
                            else float("-inf")),
             reverse=True)
 

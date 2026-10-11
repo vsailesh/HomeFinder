@@ -439,18 +439,19 @@ class TestRentCoverageFilter:
 
 
 class TestCashflowSort:
-    def test_sorted_by_cashflow_desc(self, monkeypatch):
+    def test_sorted_by_net_cashflow_desc(self, monkeypatch):
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
         from data_pipeline import generate_mock_listings
         props = generate_mock_listings(
             SearchSpecs(city="Columbia", state="MD"), count=20)
         monkeypatch.setattr(
             "optimizer.fetch_live_listings", lambda specs, count=60: props)
-        # Deterministic rent ladder: cheapest listing -> biggest cashflow
+        # Same rent for every listing: net cashflow then falls with
+        # price (payment + tax + insurance all rise) -> price-asc order.
         monkeypatch.setattr(
             "optimizer.get_zip_rent",
             lambda z: 99999.0 / max(p.list_price for p in props) * 100)
         result = optimize_search(
             SearchSpecs(city="Columbia", state="MD", sort_by="cashflow_desc"))
-        cfs = [d["estimated_monthly_cashflow"] for d in result["deals"]]
-        assert cfs == sorted(cfs, reverse=True)
+        nets = [d["net_monthly_cashflow"] for d in result["deals"]]
+        assert nets == sorted(nets, reverse=True)
