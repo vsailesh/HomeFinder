@@ -103,6 +103,126 @@ MARKET_DATA = {
         "neighborhoods": ["Bowie Town Center", "Northview", "Southview",
                           "Pointer Ridge", "Collington"]
     },
+    # Multi-state expansion — Freddie Mac HomeSteps has real REO
+    # inventory in each of these metros (probed 2026-10-11), and
+    # Zillow Research baselines cover all of them.
+    "Charlotte": {
+        "state": "NC", "county": "Mecklenburg County",
+        "median_sqft_price": 195, "lat": 35.2271, "lng": -80.8431,
+        "zip_codes": ["28202", "28203", "28204", "28205", "28206",
+                      "28207", "28208", "28209", "28210", "28212",
+                      "28213", "28227", "28262", "28273"],
+        "neighborhoods": ["Uptown", "NoDa", "Dilworth", "Myers Park",
+                          "South End", "Plaza Midwood", "Elizabeth",
+                          "Ballantyne"]
+    },
+    "Raleigh": {
+        "state": "NC", "county": "Wake County",
+        "median_sqft_price": 195, "lat": 35.7796, "lng": -78.6382,
+        "zip_codes": ["27601", "27603", "27604", "27605", "27606",
+                      "27607", "27608", "27609", "27610", "27612",
+                      "27613", "27614", "27615", "27616"],
+        "neighborhoods": ["Downtown", "Five Points", "Hayes Barton",
+                          "Cameron Village", "North Hills", "Oakwood",
+                          "Mordecai"]
+    },
+    "Tampa": {
+        "state": "FL", "county": "Hillsborough County",
+        "median_sqft_price": 215, "lat": 27.9506, "lng": -82.4572,
+        "zip_codes": ["33602", "33603", "33604", "33605", "33606",
+                      "33607", "33609", "33610", "33611", "33612",
+                      "33629"],
+        "neighborhoods": ["Hyde Park", "Ybor City", "Seminole Heights",
+                          "Downtown", "Channelside", "Davis Islands",
+                          "Tampa Heights"]
+    },
+    "Jacksonville": {
+        "state": "FL", "county": "Duval County",
+        "median_sqft_price": 165, "lat": 30.3322, "lng": -81.6557,
+        "zip_codes": ["32202", "32204", "32205", "32206", "32207",
+                      "32208", "32210", "32211", "32216", "32217",
+                      "32250"],
+        "neighborhoods": ["Riverside", "Avondale", "San Marco",
+                          "Springfield", "Five Points", "Brooklyn"]
+    },
+    "Atlanta": {
+        "state": "GA", "county": "Fulton County",
+        "median_sqft_price": 175, "lat": 33.7490, "lng": -84.3880,
+        "zip_codes": ["30303", "30305", "30306", "30307", "30308",
+                      "30309", "30310", "30311", "30312", "30314",
+                      "30315", "30316", "30317", "30319", "30324"],
+        "neighborhoods": ["Midtown", "Old Fourth Ward", "Inman Park",
+                          "West End", "Buckhead", "Cabbagetown",
+                          "Reynoldstown"]
+    },
+    "Chicago": {
+        "state": "IL", "county": "Cook County",
+        "median_sqft_price": 175, "lat": 41.8781, "lng": -87.6298,
+        "zip_codes": ["60601", "60602", "60605", "60607", "60608",
+                      "60610", "60614", "60616", "60618", "60622",
+                      "60625", "60657"],
+        "neighborhoods": ["Lincoln Park", "Logan Square", "Pilsen",
+                          "Bronzeville", "Hyde Park", "Wicker Park",
+                          "Lakeview"]
+    },
+    "Cleveland": {
+        "state": "OH", "county": "Cuyahoga County",
+        "median_sqft_price": 105, "lat": 41.4993, "lng": -81.6944,
+        "zip_codes": ["44102", "44103", "44104", "44105", "44106",
+                      "44107", "44108", "44109", "44110", "44113",
+                      "44114", "44115", "44120"],
+        "neighborhoods": ["Ohio City", "Tremont", "Detroit-Shoreway",
+                          "Edgewater", "University Circle", "Gordon Square"]
+    },
+    "Detroit": {
+        "state": "MI", "county": "Wayne County",
+        "median_sqft_price": 75, "lat": 42.3314, "lng": -83.0458,
+        "zip_codes": ["48201", "48202", "48204", "48206", "48207",
+                      "48208", "48209", "48210", "48212", "48213",
+                      "48214", "48216", "48219", "48226", "48238"],
+        "neighborhoods": ["Corktown", "Midtown", "Downtown",
+                          "Eastern Market", "Southwest Detroit",
+                          "Palmer Woods"]
+    },
+    "Kansas City": {
+        "state": "MO", "county": "Jackson County",
+        "median_sqft_price": 140, "lat": 39.0997, "lng": -94.5786,
+        "zip_codes": ["64101", "64102", "64105", "64106", "64108",
+                      "64109", "64110", "64111", "64112", "64113",
+                      "64123", "64124", "64127", "64128", "64130"],
+        "neighborhoods": ["River Market", "Crossroads", "Westport",
+                          "Brookside", "Waldo", "Country Club Plaza",
+                          "Columbus Park"]
+    },
+    "Philadelphia": {
+        "state": "PA", "county": "Philadelphia County",
+        "median_sqft_price": 130, "lat": 39.9526, "lng": -75.1652,
+        "zip_codes": ["19102", "19103", "19104", "19106", "19107",
+                      "19119", "19120", "19121", "19122", "19123",
+                      "19125", "19127", "19128", "19130", "19143",
+                      "19146", "19147", "19148"],
+        "neighborhoods": ["Fishtown", "Graduate Hospital", "Point Breeze",
+                          "Northern Liberties", "West Philadelphia",
+                          "South Philadelphia", "Manayunk"]
+    },
+    "Phoenix": {
+        "state": "AZ", "county": "Maricopa County",
+        "median_sqft_price": 230, "lat": 33.4484, "lng": -112.0740,
+        "zip_codes": ["85004", "85006", "85007", "85008", "85009",
+                      "85012", "85014", "85015", "85016", "85018",
+                      "85020", "85028"],
+        "neighborhoods": ["Downtown", "Roosevelt Row", "Arcadia",
+                          "Biltmore", "Melrose", "Sunnyslope"]
+    },
+    "Indianapolis": {
+        "state": "IN", "county": "Marion County",
+        "median_sqft_price": 125, "lat": 39.7684, "lng": -86.1581,
+        "zip_codes": ["46201", "46202", "46203", "46204", "46205",
+                      "46208", "46218", "46220", "46222", "46225",
+                      "46226", "46227", "46228"],
+        "neighborhoods": ["Fountain Square", "Broad Ripple", "Mass Ave",
+                          "Irvington", "Butler-Tarkington", "Downtown"]
+    },
 }
 
 STREET_NAMES = [

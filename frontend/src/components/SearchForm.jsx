@@ -73,6 +73,17 @@ export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) 
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'city') {
+      // City pick drives state too — the dropdown spans many states now.
+      const picked = value ? cities.find(c => c.name === value) : null;
+      onSpecsChange(prev => ({
+        ...prev,
+        city: value,
+        state: picked ? picked.state : prev.state,
+        county: '',
+      }));
+      return;
+    }
     onSpecsChange(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -111,10 +122,19 @@ export default function SearchForm({ specs, onSpecsChange, onSearch, loading }) 
               <label htmlFor="city-select">City</label>
               <select id="city-select" name="city" value={specs.city} onChange={handleChange}>
                 <option value="">All Cities</option>
-                {cities.map(c => (
-                  <option key={c.name} value={c.name} title={c.metro_as_of ? `Metro trend as of ${c.metro_as_of} (Zillow Research)` : undefined}>
-                    {cityLabel(c)}
-                  </option>
+                {Object.entries(
+                  cities.reduce((groups, c) => {
+                    (groups[c.state] = groups[c.state] || []).push(c);
+                    return groups;
+                  }, {})
+                ).sort(([a], [b]) => a.localeCompare(b)).map(([state, group]) => (
+                  <optgroup key={state} label={state}>
+                    {group.map(c => (
+                      <option key={c.name} value={c.name} title={c.metro_as_of ? `Metro trend as of ${c.metro_as_of} (Zillow Research)` : undefined}>
+                        {cityLabel(c)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
