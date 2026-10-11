@@ -278,6 +278,16 @@ def score_deal(prop: Property, val: ValuationResult,
     # Clamp
     score = max(0, min(100, score))
 
+    # Full monthly carry: P&I + tax/12 + insurance estimate + HOA.
+    # Real tax when the listing publishes it (HomeSteps does, mock
+    # fabricates it); otherwise ~1.1%/yr of list. Insurance assumed
+    # 0.35%/yr of list when unknown.
+    annual_tax = prop.annual_tax or prop.list_price * 0.011
+    insurance = prop.list_price * 0.0035 / 12
+    hoa = prop.hoa_fee or 0.0
+    carry = round(payment + annual_tax / 12 + insurance + hoa, 2)
+    net_cf = round(rent - carry, 2) if rent is not None else None
+
     reasons = _build_reasons(prop, val)
     reasons.extend(heat_reasons)
     if cashflow is not None and cashflow > 0:
@@ -299,6 +309,8 @@ def score_deal(prop: Property, val: ValuationResult,
             prop, val.estimated_value, appreciation),
         estimated_rent=rent,
         estimated_monthly_cashflow=cashflow,
+        monthly_carry_estimate=carry,
+        net_monthly_cashflow=net_cf,
     )
 
 

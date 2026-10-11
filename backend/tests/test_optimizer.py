@@ -349,6 +349,46 @@ class TestMarketHeatScoring:
         assert any("negotiating leverage" in r for r in deal["reasons"])
 
 
+class TestCarryEstimate:
+    """Full PITI+HOA carry and net cashflow after carry."""
+
+    def _deal(self, monkeypatch, **over):
+        monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+        prop = make_property(**over)
+        return prop, score_deal(prop, valuate_property(prop))
+
+    def test_carry_components(self, monkeypatch):
+        prop, deal = self._deal(monkeypatch, list_price=300000,
+                                annual_tax=3600, hoa_fee=100)
+        payment = deal.monthly_payment_estimate
+        insurance = 300000 * 0.0035 / 12
+        assert deal.monthly_carry_estimate == round(
+            payment + 3600 / 12 + insurance + 100, 2)
+        assert deal.monthly_carry_estimate > payment
+
+    def test_tax_fallback_when_missing(self, monkeypatch):
+        prop, deal = self._deal(monkeypatch, list_price=300000,
+                                annual_tax=None)
+        payment = deal.monthly_payment_estimate
+        insurance = 300000 * 0.0035 / 12
+        assert deal.monthly_carry_estimate == round(
+            payment + 300000 * 0.011 / 12 + insurance, 2)
+
+    def test_net_cashflow_after_carry(self, monkeypatch):
+        prop, deal = self._deal(monkeypatch, list_price=300000,
+                                annual_tax=3600)
+        # No rent data -> net stays None even though carry exists
+        assert deal.net_monthly_cashflow is None
+
+    def test_net_cashflow_with_rent(self, monkeypatch):
+        prop = make_property(list_price=300000, annual_tax=3600)
+        deal = score_deal(prop, valuate_property(prop), metro_rent=2000.0)
+        assert deal.net_monthly_cashflow == round(
+            2000.0 - deal.monthly_carry_estimate, 2)
+        # Net is always below the P&I-only cashflow (tax+insurance drag)
+        assert deal.net_monthly_cashflow < deal.estimated_monthly_cashflow
+
+
 class TestRentCoverageFilter:
     """min_rent_coverage drops deals whose rent can't cover the P&I
     payment multiple — including deals with no rent data at all."""

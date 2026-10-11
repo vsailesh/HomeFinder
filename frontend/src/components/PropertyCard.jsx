@@ -21,7 +21,8 @@ export default function PropertyCard({ deal }) {
 
   const { property: prop, valuation: val, deal_score, deal_grade,
           reasons, risk_factors, monthly_payment_estimate, estimated_roi_5yr,
-          estimated_rent, estimated_monthly_cashflow } = deal;
+          estimated_rent, estimated_monthly_cashflow,
+          monthly_carry_estimate, net_monthly_cashflow } = deal;
 
   const priceDiff = val.price_difference;
   const priceDiffPct = val.price_difference_pct;
@@ -137,14 +138,23 @@ export default function PropertyCard({ deal }) {
         </div>
         {estimated_rent != null && (
           <div
-            title="Typical rent for this ZIP (Zillow ZORI; metro-level when the ZIP isn't published). Cashflow = rent − P&I payment estimate; excludes tax/insurance/HOA."
+            title="Typical rent for this ZIP (Zillow ZORI; metro-level when the ZIP isn't published). P&I cashflow = rent − payment. Full carry adds property tax (listing value when published, else ~1.1%/yr), insurance (~0.35%/yr), and HOA."
           >
-            <div className="monthly-label">Est. Rent (metro)</div>
+            <div className="monthly-label">Est. Rent (ZIP)</div>
             <div className="monthly-value">{formatCurrency(estimated_rent)}/mo</div>
             <div className={`roi-value ${estimated_monthly_cashflow >= 0 ? 'roi-positive' : 'roi-negative'}`}>
               {estimated_monthly_cashflow >= 0 ? '+' : ''}
-              {formatCurrency(estimated_monthly_cashflow)}/mo cashflow
+              {formatCurrency(estimated_monthly_cashflow)}/mo after P&I
             </div>
+            {monthly_carry_estimate != null && (
+              <div className="monthly-value" style={{ fontSize: 13 }}>
+                carry {formatCurrency(monthly_carry_estimate)}/mo →{' '}
+                <span className={`roi-value ${net_monthly_cashflow >= 0 ? 'roi-positive' : 'roi-negative'}`}>
+                  {net_monthly_cashflow >= 0 ? '+' : ''}
+                  {formatCurrency(net_monthly_cashflow)}/mo net
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>

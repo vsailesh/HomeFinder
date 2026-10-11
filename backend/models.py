@@ -147,6 +147,12 @@ class DealScore(BaseModel):
     # has no rent data.
     estimated_rent: Optional[float] = None
     estimated_monthly_cashflow: Optional[float] = None
+    # Full monthly carry: P&I + property tax/12 + insurance estimate
+    # (0.35%/yr of list when unknown) + HOA. net_monthly_cashflow is
+    # rent minus this — the honest investor number. None when the
+    # payment itself couldn't be estimated.
+    monthly_carry_estimate: Optional[float] = None
+    net_monthly_cashflow: Optional[float] = None
 
 
 class MarketStats(BaseModel):
