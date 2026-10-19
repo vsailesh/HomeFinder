@@ -14,3 +14,7 @@ services:
       # Optional: real Zillow data. Leave unset to use the mock generator.
       - key: RAPIDAPI_KEY
         sync: false
+      # Optional: locks POST /api/reo/sweep (GitHub Actions daily sweep
+      # sends it as the X-Sweep-Token header). Unset = endpoint refuses.
+      - key: SWEEP_TOKEN
+        sync: false

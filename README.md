@@ -12,6 +12,8 @@ Listing sources cascade in order: RapidAPI Zillow (full inventory, needs quota) 
 
 **Investor analysis** — every scored deal carries: estimated rent (Zillow ZORI, ZIP-level when published, metro fallback), P&I payment, full monthly carry (P&I + property tax + insurance + HOA), and cashflow net of carry. Deal scoring factors rental coverage; metro heat (price cuts, pace, sale-to-list) adds negotiation-leverage reasons/risks. Search filters include `min_rent_coverage` (rent ÷ P&I) and `sort_by=cashflow_desc` ranks by net cashflow.
 
+**REO tracker** — a daily sweep (GitHub Actions cron → `POST /api/reo/sweep`, plus a freshness-gated sweep on backend startup) records every HomeSteps listing ever sighted in SQLite (`REO_DB_PATH`, default `backend/reo_history.db`), so REO inventory that appeared and vanished between searches isn't lost. `GET /api/reo/inventory` reports active listings with new-this-week / price-cut flags; the frontend shows a tracker panel under the search form. Sweep history lives on the host disk — on Render's free tier it resets on deploy and rebuilds on the next sweep.
+
 ## Running locally
 
 Backend (port 8001):
@@ -35,6 +37,9 @@ npm run dev
 | Var | Where | Purpose |
 |---|---|---|
 | `RAPIDAPI_KEY` | backend | Live Zillow listings. Unset → mock generator |
+| `SWEEP_TOKEN` | backend + GH secret | Locks `POST /api/reo/sweep` (sent as `X-Sweep-Token` header). Unset → endpoint refuses |
+| `REO_DB_PATH` | backend | REO tracker SQLite path. Default `backend/reo_history.db` |
+| `REO_SWEEP_ON_STARTUP` | backend | `0` disables the startup sweep |
 | `ALLOWED_ORIGINS` | backend | CORS allowlist, comma-separated. Default `*` (no credentials) |
 | `BACKEND_URL` | Vercel | Backend origin for the frontend's `/api` rewrites |
 
@@ -48,6 +53,8 @@ npm run dev
 | `POST /api/loan/quote` | Prorated mortgage quote (credit/loan-type/LTV/term adjustments, DTI, lender comparison) |
 | `GET /api/cities` | Supported cities + market $/sqft + metro trend |
 | `GET /api/market/baselines` | Real per-metro baselines from Zillow Research public data (appreciation, typical value, median list, typical rent, market heat). No key needed |
+| `GET /api/reo/inventory` | Tracked Freddie Mac REO inventory: active listings, new/price-cut flags, sweep history. No key needed |
+| `POST /api/reo/sweep` | Trigger a REO sweep across all metros. Requires `X-Sweep-Token` = `SWEEP_TOKEN` |
 | `GET /api/debug/source` | Diagnoses live-data failures: key presence (masked), RapidAPI reachability, quota/outage verdict |
 | `GET /api/status` | Health check |
 

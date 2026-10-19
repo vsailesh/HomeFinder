@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import SearchForm, { DEFAULT_SPECS, cleanParams } from '../components/SearchForm';
 import SavedSearches from '../components/SavedSearches';
+import ReoTracker from '../components/ReoTracker';
 import PropertyCard from '../components/PropertyCard';
 import MortgageCalculator from '../components/MortgageCalculator';
 import { PriceDistributionChart, DealScoreChart, ValueVsPriceChart, SqftVsPriceScatter } from '../components/Charts';
@@ -135,6 +136,9 @@ export default function HomePage() {
         currentParams={lastParams ? cleanParams(specs) : {}}
         onLoad={handleLoadSaved}
       />
+
+      {/* REO inventory tracker */}
+      <ReoTracker />
 
       {/* Loading */}
       {loading && (

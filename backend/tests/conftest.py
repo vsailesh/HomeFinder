@@ -67,3 +67,17 @@ def stub_market_baselines(monkeypatch):
     import optimizer as opt_mod
     monkeypatch.setattr(opt_mod, "get_zip_rent", lambda z: None)
     yield
+
+
+@pytest.fixture(autouse=True)
+def isolate_reo_tracker(monkeypatch, tmp_path):
+    """Point the REO tracker at a throwaway DB, disable its startup
+    sweep, and stub the HomeSteps fetcher — keeps the suite offline
+    and DB-file-free (specific tests re-stub with real listings)."""
+    monkeypatch.setenv("REO_DB_PATH", str(tmp_path / "reo_test.db"))
+    monkeypatch.setenv("REO_SWEEP_ON_STARTUP", "0")
+    import reo_tracker as rt
+    monkeypatch.setattr(rt, "fetch_homesteps_properties",
+                        lambda city, state, zip_code=None: [])
+    monkeypatch.setattr(rt, "_METRO_PAUSE_SECONDS", 0.0)  # fast sweeps
+    yield

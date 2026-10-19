@@ -2,11 +2,15 @@
 Home Finder & Optimizer – FastAPI Backend
 Serves property data, valuations, and optimized deal rankings.
 """
+import asyncio
 import logging
 import os
+import secrets
+import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 from models import SearchSpecs, PropertyType, LoanQuoteRequest, LoanQuoteResponse
@@ -15,6 +19,7 @@ from data_pipeline import get_all_cities, get_property_by_id
 from valuation_engine import valuate_property
 from loan_engine import get_market_base_rate, quote_loan
 from market_baselines import get_baselines_snapshot, get_metro_baseline
+import reo_tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,10 +27,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Background REO sweep on cold start (freshness-gated, killable
+    # via REO_SWEEP_ON_STARTUP=0) — never blocks serving.
+    threading.Thread(target=reo_tracker.maybe_sweep_on_startup,
+                     name="reo-startup-sweep", daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="Home Finder & Optimizer API",
     description="Find the best real estate deals with variable-by-variable price analysis",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Comma-separated allowlist, e.g. ALLOWED_ORIGINS=https://app.example.com,https://other.com
@@ -70,6 +86,36 @@ async def market_baselines():
     """Real per-metro baselines from Zillow Research public data
     (trailing-12mo appreciation, typical value, median list price)."""
     return get_baselines_snapshot()
+
+
+@app.post("/api/reo/sweep")
+async def reo_sweep(force: bool = False, request: Request = None):
+    """Trigger a HomeSteps REO sweep across all served metros.
+
+    Protected: requires the X-Sweep-Token header to match the
+    SWEEP_TOKEN env var. Refuses everyone while SWEEP_TOKEN is unset
+    (request.client.host is unreliable behind the Render proxy, and
+    local runs get the startup sweep for free).
+    """
+    expected = os.environ.get("SWEEP_TOKEN", "")
+    provided = (request.headers.get("X-Sweep-Token") or "") if request else ""
+    if not expected or not secrets.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=403,
+            detail="Sweep endpoint locked. Set SWEEP_TOKEN on the server "
+                   "and send it as the X-Sweep-Token header.")
+    result = await asyncio.to_thread(reo_tracker.run_sweep, force=force)
+    return result
+
+
+@app.get("/api/reo/inventory")
+async def reo_inventory(city: Optional[str] = None,
+                        days: int = Query(default=7, ge=1, le=30),
+                        include_inactive: bool = False):
+    """Tracked Freddie Mac REO inventory across metros: active
+    listings with new-this-window / price-cut flags and history."""
+    return reo_tracker.get_inventory(city=city, days=days,
+                                     include_inactive=include_inactive)
 
 
 @app.get("/api/search")
