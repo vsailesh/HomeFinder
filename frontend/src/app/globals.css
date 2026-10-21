@@ -1978,6 +1978,16 @@ a:hover { text-decoration: underline; }
   cursor: help;
   white-space: nowrap;
 }
+
+/* NEW / PRICE CUT variants sit beside the source badge, not pushed
+   right — margin-left:auto belongs to the first badge only. */
+.reo-badge.reo-tag-new,
+.reo-badge.reo-tag-cut {
+  margin-left: 4px;
+  border: none;
+  font-size: 10px;
+  padding: 2px 7px;
+}
 .mls-error {
   padding: 12px 16px;
   background: #fef2f2;

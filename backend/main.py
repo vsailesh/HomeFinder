@@ -184,7 +184,27 @@ async def search_properties(
     )
 
     results = optimize_search(specs, page=page, page_size=page_size)
+    _attach_reo_tracker(results)
     return results
+
+
+def _attach_reo_tracker(results: dict) -> None:
+    """Enrich HomeSteps deals in search results with tracker state
+    (new sighting / price-cut history). Other sources untouched.
+    Deals arrive as dicts (optimizer model_dumps them)."""
+    deals = results.get("deals", [])
+    reo_ids = [d["property"]["id"] for d in deals
+               if d["property"].get("source") == "homesteps-freddie-mac"]
+    if not reo_ids:
+        return
+    try:
+        state = reo_tracker.get_tracker_state(reo_ids)
+    except Exception:
+        logger.exception("REO tracker enrichment failed (non-fatal)")
+        return
+    for d in deals:
+        if d["property"]["id"] in state:
+            d["reo_tracker"] = state[d["property"]["id"]]
 
 
 @app.get("/api/property/{property_id}/valuation")

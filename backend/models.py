@@ -153,6 +153,9 @@ class DealScore(BaseModel):
     # payment itself couldn't be estimated.
     monthly_carry_estimate: Optional[float] = None
     net_monthly_cashflow: Optional[float] = None
+    # REO tracker state (new sighting / price-cut history) for HomeSteps
+    # listings. None for non-tracked sources.
+    reo_tracker: Optional[dict] = None
 
 
 class MarketStats(BaseModel):

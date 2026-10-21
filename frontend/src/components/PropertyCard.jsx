@@ -22,7 +22,7 @@ export default function PropertyCard({ deal }) {
   const { property: prop, valuation: val, deal_score, deal_grade,
           reasons, risk_factors, monthly_payment_estimate, estimated_roi_5yr,
           estimated_rent, estimated_monthly_cashflow,
-          monthly_carry_estimate, net_monthly_cashflow } = deal;
+          monthly_carry_estimate, net_monthly_cashflow, reo_tracker } = deal;
 
   const priceDiff = val.price_difference;
   const priceDiffPct = val.price_difference_pct;
@@ -62,6 +62,22 @@ export default function PropertyCard({ deal }) {
               title="Real Freddie Mac REO listing from HomeSteps (homesteps.com). Bank-owned; sqft estimated from room count."
             >
               🏦 Freddie Mac REO
+            </span>
+          )}
+          {reo_tracker?.is_new && (
+            <span
+              className="reo-badge reo-tag-new"
+              title={`First sighted ${new Date(reo_tracker.first_seen).toLocaleDateString()} — new REO arrival.`}
+            >
+              NEW
+            </span>
+          )}
+          {reo_tracker?.price_cut && (
+            <span
+              className="reo-badge reo-tag-cut"
+              title={`Price cut ${reo_tracker.price_change_pct}% — was ${formatCurrency(reo_tracker.prev_price)}.`}
+            >
+              PRICE CUT {reo_tracker.price_change_pct}%
             </span>
           )}
         </div>

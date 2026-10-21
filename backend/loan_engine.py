@@ -30,6 +30,12 @@ _CACHE_TTL_SECONDS = 60 * 60 * 6  # 6h
 _rate_cache: dict = {"rate": None, "ts": 0.0, "source": "none"}
 
 
+def _plausible_rate(rate: float) -> bool:
+    """30yr mortgage rates live in 0–25% — anything outside is bad
+    data (FRED once served an HTML page that parsed to 400)."""
+    return isinstance(rate, float) and 0.0 < rate <= 25.0
+
+
 def get_market_base_rate(force_refresh: bool = False) -> dict:
     """
     Return current 30yr fixed market base rate.
@@ -43,6 +49,8 @@ def get_market_base_rate(force_refresh: bool = False) -> dict:
     try:
         resp = requests.get(FRED_CSV_URL, timeout=8)
         resp.raise_for_status()
+        if resp.text.lstrip().startswith("<"):
+            raise ValueError("FRED returned HTML, not CSV")
         reader = csv.reader(io.StringIO(resp.text))
         rows = [r for r in reader if r]
         # header row first; data rows: [date, value]; "." means missing
@@ -52,11 +60,13 @@ def get_market_base_rate(force_refresh: bool = False) -> dict:
                 latest = float(row[1])
         if latest is None:
             raise ValueError("no valid FRED rows")
+        if not _plausible_rate(latest):
+            raise ValueError(f"implausible FRED rate {latest}")
         _rate_cache.update({"rate": latest, "ts": now, "source": "fred"})
         return {"rate": latest, "source": "fred", "as_of": now}
-    except Exception as exc:  # network down, parse fail, etc.
+    except Exception as exc:  # network down, parse fail, bad data, etc.
         logger.warning("FRED rate fetch failed (%s); using fallback/cache.", exc)
-        if cached is not None:
+        if cached is not None and _plausible_rate(cached):
             return {"rate": cached, "source": "cache", "as_of": _rate_cache["ts"]}
         return {"rate": _STATIC_FALLBACK_RATE, "source": "fallback", "as_of": now}
 

@@ -303,6 +303,42 @@ def _deactivate_absent(seen_ids: List[str]) -> int:
         return cur.rowcount
 
 
+def _flags(r, days: int) -> Dict:
+    """Read-time new/price-cut flags (age out automatically)."""
+    first_age = _age_seconds(r["first_seen"])
+    change_age = _age_seconds(r["last_price_change"])
+    return {
+        "is_new": first_age is not None and first_age <= days * 86400,
+        "price_cut": (change_age is not None and change_age <= days * 86400
+                      and r["prev_price"] is not None
+                      and r["list_price"] < r["prev_price"]),
+    }
+
+
+def get_tracker_state(ids: List[str], days: int = 7) -> Dict[str, Dict]:
+    """Tracker snapshot for specific listing ids — used to enrich
+    /api/search results for HomeSteps deals. Unknown ids absent."""
+    if not ids:
+        return {}
+    _ensure_schema()
+    out = {}
+    with _connect() as conn:
+        for i in range(0, len(ids), 50):  # SQLite param limit
+            chunk = ids[i:i + 50]
+            rows = conn.execute(
+                f"SELECT * FROM listings WHERE id IN "
+                f"({','.join('?' * len(chunk))})", chunk).fetchall()
+            for r in rows:
+                out[r["id"]] = {
+                    **_flags(r, days),
+                    "first_seen": r["first_seen"],
+                    "last_seen": r["last_seen"],
+                    "prev_price": r["prev_price"],
+                    "price_change_pct": _pct(r["list_price"], r["prev_price"]),
+                }
+    return out
+
+
 def get_inventory(city: Optional[str] = None, days: int = 7,
                   include_inactive: bool = False) -> Dict:
     """Report-style snapshot of tracked REO inventory.
@@ -332,12 +368,7 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
     listings = []
     metros = set()
     for r in rows:
-        first_age = _age_seconds(r["first_seen"])
-        change_age = _age_seconds(r["last_price_change"])
-        is_new = first_age is not None and first_age <= days * 86400
-        is_cut = (change_age is not None and change_age <= days * 86400
-                  and r["prev_price"] is not None
-                  and r["list_price"] < r["prev_price"])
+        flags = _flags(r, days)
         if r["is_active"]:
             metros.add(f'{r["city"]}, {r["state"]}')
         listings.append({
@@ -348,8 +379,9 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
             "last_price_change": r["last_price_change"],
             "price_change_pct": _pct(r["list_price"], r["prev_price"]),
             "first_seen": r["first_seen"], "last_seen": r["last_seen"],
-            "is_active": bool(r["is_active"]), "is_new": is_new,
-            "price_cut": is_cut,
+            "is_active": bool(r["is_active"]),
+            "is_new": flags["is_new"],
+            "price_cut": flags["price_cut"],
             "bedrooms": r["bedrooms"], "bathrooms": r["bathrooms"],
             "sqft": r["sqft"], "sqft_estimated": True,
             "property_type": r["property_type"],

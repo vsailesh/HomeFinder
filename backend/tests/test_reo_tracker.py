@@ -285,3 +285,57 @@ def test_inventory_endpoint_with_data(client, monkeypatch):
     body = client.get("/api/reo/inventory").json()
     assert body["summary"]["active"] == 1
     assert body["last_sweep"]["status"] == "ok"
+
+
+# --- search enrichment --------------------------------------------------
+
+def test_get_tracker_state_known_and_unknown_ids():
+    _sweep(_prop())
+    state = rt.get_tracker_state(["homesteps-x", "homesteps-nope"])
+    assert "homesteps-nope" not in state
+    s = state["homesteps-x"]
+    assert s["is_new"] is True
+    assert s["first_seen"]
+    assert s["prev_price"] is None
+
+    assert rt.get_tracker_state([]) == {}
+
+
+def test_get_tracker_state_price_cut_flag():
+    _sweep(_prop(price=199000.0))
+    _sweep(_prop(price=189000.0))
+    s = rt.get_tracker_state(["homesteps-x"])["homesteps-x"]
+    assert s["price_cut"] is True
+    assert s["prev_price"] == 199000.0
+    assert s["price_change_pct"] == -5.0
+
+
+def test_attach_reo_tracker_enriches_homesteps_deals():
+    from main import _attach_reo_tracker
+
+    _sweep(_prop())  # tracker knows homesteps-x
+
+    results = {"deals": [
+        {"property": {"id": "homesteps-x",
+                      "source": "homesteps-freddie-mac"}},
+        {"property": {"id": "mock-1", "source": "mock-generator"}},
+    ]}
+    _attach_reo_tracker(results)
+    reo, mock = results["deals"]
+    assert reo["reo_tracker"]["is_new"] is True
+    assert reo["reo_tracker"]["first_seen"]
+    assert "reo_tracker" not in mock
+
+
+def test_attach_reo_tracker_survives_db_error(monkeypatch):
+    def boom(ids, days=7):
+        raise sqlite3.OperationalError("disk gone")
+    monkeypatch.setattr(rt, "get_tracker_state", boom)
+    from main import _attach_reo_tracker
+
+    results = {"deals": [
+        {"property": {"id": "homesteps-x",
+                      "source": "homesteps-freddie-mac"}}]}
+    _attach_reo_tracker(results)  # must swallow the DB error
+    assert "reo_tracker" not in results["deals"][0]
+

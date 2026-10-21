@@ -1,5 +1,7 @@
 """Shared fixtures. Keeps the suite network-free: Zillow Research
 baselines resolve from local fixture data instead of live S3."""
+import time
+
 import pytest
 
 import market_baselines as mb
@@ -66,6 +68,14 @@ def stub_market_baselines(monkeypatch):
     # ZIP-level rents: offline by default (tests override as needed).
     import optimizer as opt_mod
     monkeypatch.setattr(opt_mod, "get_zip_rent", lambda z: None)
+
+    # Deterministic mortgage base rate — cashflow math was silently
+    # hitting live FRED, which broke the day FRED started serving
+    # HTML instead of CSV (loan tests re-stub as needed).
+    import loan_engine
+    monkeypatch.setattr(
+        loan_engine, "_rate_cache",
+        {"rate": 6.5, "ts": time.time(), "source": "cache"})
     yield
 
 

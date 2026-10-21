@@ -1,6 +1,7 @@
 """Loan engine math tests — rate proration, payments, quotes."""
 from loan_engine import (
     prorate_rate, monthly_payment, quote_loan, _credit_adjustment,
+    get_market_base_rate, _plausible_rate,
 )
 
 
@@ -12,6 +13,56 @@ class TestProrateRate:
     def test_poor_credit_adds(self):
         rate = prorate_rate(7.0, 620, "conventional", "primary", 20, 30)
         assert rate > 7.0
+
+
+class TestRateFetchGuard:
+    """FRED once served an HTML page that the CSV parser read as a
+    400% rate; these pin the guards that prevent a repeat."""
+
+    def test_plausible_bounds(self):
+        assert _plausible_rate(6.28)
+        assert _plausible_rate(25.0)
+        assert not _plausible_rate(400.0)
+        assert not _plausible_rate(0.0)
+        assert not _plausible_rate(-1.0)
+
+    def test_html_response_falls_back(self, monkeypatch):
+        import loan_engine
+        monkeypatch.setattr(loan_engine, "_rate_cache",
+                            {"rate": None, "ts": 0.0, "source": "none"})
+
+        class FakeResp:
+            ok = True
+            text = "<!doctype html><html>page</html>"
+
+            def raise_for_status(self):
+                pass
+
+        monkeypatch.setattr(
+            loan_engine.requests, "get",
+            lambda url, timeout: FakeResp())
+        result = get_market_base_rate()
+        assert result["source"] == "fallback"
+        assert 0 < result["rate"] <= 25
+
+    def test_implausible_value_falls_back(self, monkeypatch):
+        import loan_engine
+        monkeypatch.setattr(loan_engine, "_rate_cache",
+                            {"rate": None, "ts": 0.0, "source": "none"})
+
+        class FakeResp:
+            ok = True
+            text = "observation_date,MORTGAGE30US\n2026-10-16,400.0\n"
+
+            def raise_for_status(self):
+                pass
+
+        monkeypatch.setattr(
+            loan_engine.requests, "get",
+            lambda url, timeout: FakeResp())
+        result = get_market_base_rate()
+        assert result["source"] == "fallback"
+        assert 0 < result["rate"] <= 25
 
     def test_below_min_credit_ineligible(self):
         # FHA minimum is 500
