@@ -3,9 +3,14 @@ name: REO Sweep
 # Daily HomeSteps REO sweep across all served metros. Pings the
 # protected backend endpoint; the Render free instance may be asleep,
 # so allow for a 50s+ cold start plus a multi-minute cold sweep.
+#
+# Schedule temporarily disabled (2026-10-22): the backend's SWEEP_TOKEN
+# env var is not set yet, so every run failed 403. Re-enable by
+# restoring the schedule block below once the token is configured on
+# Render — manual workflow_dispatch also works for testing.
 on:
-  schedule:
-    - cron: "17 13 * * *"   # daily 13:17 UTC (9:17am ET) — off the :00 mark
+  # schedule:
+  #   - cron: "17 13 * * *"   # daily 13:17 UTC (9:17am ET) — off the :00 mark
   workflow_dispatch: {}
 
 jobs:
