@@ -3,7 +3,7 @@
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, ScatterChart,
-  Scatter, ZAxis
+  Scatter, ZAxis, LineChart, Line
 } from 'recharts';
 
 const COLORS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6'];
@@ -130,6 +130,56 @@ export function ValueVsPriceChart({ deals }) {
           <Bar dataKey="estimated" name="Estimated" fill="#22d3ee" radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function ProjectionChart({ projection }) {
+  // 10-yr hold: property value, equity, cumulative cashflow, and net
+  // position at exit (equity + cum cashflow − 6% selling cost).
+  // Cashflow series are null when no rent data exists for the area.
+  const hasRent = projection.rows.some(r => r.cum_cf != null);
+  const data = projection.rows.map(r => ({
+    year: `Yr ${r.year}`,
+    value: r.property_value,
+    equity: r.equity,
+    ...(hasRent ? { cum_cf: r.cum_cf, net_position: r.net_position } : {}),
+  }));
+
+  const a = projection.assumptions;
+  const apprecPct = (a.appreciation * 100).toFixed(1);
+  const sourceLabel = a.appreciation_source === 'zillow-research-metro'
+    ? 'metro trend' : 'national default';
+
+  return (
+    <div className="chart-card projection-chart-card">
+      <h3>
+        📈 10-Year Hold Projection
+        <span className="projection-subtitle">
+          {a.rate_pct}% · values {apprecPct}%/yr ({sourceLabel}) · rent +{(a.rent_growth * 100).toFixed(0)}%/yr · exit −{(a.selling_cost_pct * 100).toFixed(0)}%
+        </span>
+      </h3>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" />
+          <XAxis dataKey="year" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+          <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={formatK} />
+          <Tooltip
+            contentStyle={chartTooltipStyle}
+            formatter={(val) => (val == null ? '—' : formatK(val))}
+          />
+          <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
+          <Line dataKey="value" name="Property value" stroke="#6366f1" dot={false} strokeWidth={2} />
+          <Line dataKey="equity" name="Equity" stroke="#22d3ee" dot={false} strokeWidth={2} />
+          {hasRent && <Line dataKey="cum_cf" name="Cum. cashflow" stroke="#f59e0b" dot={false} strokeWidth={2} />}
+          {hasRent && <Line dataKey="net_position" name="Net position at exit" stroke="#10b981" dot={false} strokeWidth={2} />}
+        </LineChart>
+      </ResponsiveContainer>
+      {!hasRent && (
+        <div className="projection-no-rent">
+          No rent data published for this area — showing carry, equity, and net-of-costs value only.
+        </div>
+      )}
     </div>
   );
 }

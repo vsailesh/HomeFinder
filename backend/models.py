@@ -176,6 +176,18 @@ class SearchResponse(BaseModel):
     search_specs: SearchSpecs
 
 
+class ProjectionRequest(BaseModel):
+    """Inputs for a 10-yr hold projection — everything the search
+    result already carries, so the client POSTs its deal fields."""
+    list_price: float = Field(gt=0)
+    estimated_value: Optional[float] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    annual_tax: Optional[float] = Field(default=None, ge=0)
+    hoa_fee: Optional[float] = Field(default=None, ge=0)
+
+
 class LoanQuoteRequest(BaseModel):
     """Borrower + property inputs for a mortgage quote."""
     home_price: float = Field(gt=0)

@@ -13,12 +13,14 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
-from models import SearchSpecs, PropertyType, LoanQuoteRequest, LoanQuoteResponse
+from models import (SearchSpecs, PropertyType, LoanQuoteRequest,
+                    LoanQuoteResponse, ProjectionRequest)
 from optimizer import optimize_search
 from data_pipeline import get_all_cities, get_property_by_id
 from valuation_engine import valuate_property
 from loan_engine import get_market_base_rate, quote_loan
 from market_baselines import get_baselines_snapshot, get_metro_baseline
+from projection import build_projection
 import reo_tracker
 
 logging.basicConfig(
@@ -205,6 +207,23 @@ def _attach_reo_tracker(results: dict) -> None:
     for d in deals:
         if d["property"]["id"] in state:
             d["reo_tracker"] = state[d["property"]["id"]]
+
+
+@app.post("/api/property/projection")
+async def property_projection(req: ProjectionRequest):
+    """10-year hold projection: rent vs full carry year by year, plus
+    value appreciation, amortization, equity build, and net position at
+    exit. Inputs come from the client's deal object (no server-side
+    property lookup — live caches shift between calls)."""
+    return build_projection(
+        list_price=req.list_price,
+        estimated_value=req.estimated_value,
+        city=req.city,
+        state=req.state,
+        zip_code=req.zip_code,
+        annual_tax=req.annual_tax,
+        hoa_fee=req.hoa_fee,
+    )
 
 
 @app.get("/api/property/{property_id}/valuation")

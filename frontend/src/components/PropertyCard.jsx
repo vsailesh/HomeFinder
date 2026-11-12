@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ProjectionChart } from './Charts';
 
 function formatCurrency(val) {
   if (val == null) return '—';
@@ -20,6 +21,42 @@ export default function PropertyCard({
   deal, compareOn = false, compareDisabled = false, onToggleCompare,
 }) {
   const [showVars, setShowVars] = useState(false);
+  const [showProjection, setShowProjection] = useState(false);
+  const [projection, setProjection] = useState(null);
+  const [projectionLoading, setProjectionLoading] = useState(false);
+  const [projectionError, setProjectionError] = useState(null);
+
+  const loadProjection = async () => {
+    if (projection || projectionLoading) return; // cached per card
+    setProjectionLoading(true);
+    setProjectionError(null);
+    try {
+      const res = await fetch('/api/property/projection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          list_price: prop.list_price,
+          estimated_value: val.estimated_value,
+          city: prop.city,
+          state: prop.state,
+          zip_code: prop.zip_code,
+          annual_tax: prop.annual_tax ?? null,
+          hoa_fee: prop.hoa_fee ?? null,
+        }),
+      });
+      if (!res.ok) throw new Error(`Projection failed (${res.status})`);
+      setProjection(await res.json());
+    } catch (err) {
+      setProjectionError(err.message || 'Projection unavailable right now.');
+    } finally {
+      setProjectionLoading(false);
+    }
+  };
+
+  const toggleProjection = () => {
+    setShowProjection(!showProjection);
+    if (!showProjection) loadProjection(); // lazy — only on first expand
+  };
 
   const { property: prop, valuation: val, deal_score, deal_grade,
           reasons, risk_factors, monthly_payment_estimate, estimated_roi_5yr,
@@ -272,6 +309,29 @@ export default function PropertyCard({
                 </div>
               ))}
             </div>
+          </>
+        )}
+      </div>
+
+      {/* 10-yr hold projection (lazy — fetched on first expand) */}
+      <div className="variables-section">
+        <button
+          className="variables-toggle"
+          onClick={toggleProjection}
+          type="button"
+        >
+          {showProjection ? '▲' : '▼'} 10-Year Hold Projection
+        </button>
+
+        {showProjection && (
+          <>
+            {projectionLoading && (
+              <div className="projection-note">Projecting 10-year hold…</div>
+            )}
+            {projectionError && (
+              <div className="projection-note projection-error">{projectionError}</div>
+            )}
+            {projection && <ProjectionChart projection={projection} />}
           </>
         )}
       </div>
