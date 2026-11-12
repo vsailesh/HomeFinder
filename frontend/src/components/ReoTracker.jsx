@@ -21,18 +21,42 @@ function relativeTime(iso) {
 /**
  * REO inventory tracker panel — summary of Freddie Mac HomeSteps
  * listings persisted across daily sweeps, with new/price-cut flags.
- * Renders nothing when the tracker has no active inventory (or the
- * backend is unreachable).
+ * Listings that arrived (or cut price) since the visitor's previous
+ * session get a 🔔 "since your last visit" callout — per-browser via
+ * localStorage, no account needed. Renders nothing when the tracker
+ * has no active inventory (or the backend is unreachable).
  */
+const VISIT_KEY = 'home-finder:last-visit';
+
 export default function ReoTracker() {
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [freshIds, setFreshIds] = useState(null); // Set of ids new since last visit
 
   useEffect(() => {
     let cancelled = false;
     fetch('/api/reo/inventory?days=7')
       .then(res => (res.ok ? res.json() : null))
-      .then(json => { if (!cancelled) setData(json); })
+      .then(json => {
+        if (cancelled || !json) return;
+        setData(json);
+        // Diff against the previous visit's stamp, then restamp —
+        // first-ever visits (no stamp) see no callout.
+        try {
+          const prev = window.localStorage.getItem(VISIT_KEY);
+          if (prev) {
+            const prevTs = new Date(prev);
+            const fresh = (json.listings || []).filter(l =>
+              (l.is_new && l.first_seen && new Date(l.first_seen) > prevTs) ||
+              (l.price_cut && l.last_price_change &&
+                new Date(l.last_price_change) > prevTs));
+            setFreshIds(new Set(fresh.map(l => l.id)));
+          }
+          window.localStorage.setItem(VISIT_KEY, new Date().toISOString());
+        } catch {
+          // Storage blocked — visit diffing just stays off.
+        }
+      })
       .catch(() => {}); // panel simply stays hidden
     return () => { cancelled = true; };
   }, []);
@@ -42,6 +66,7 @@ export default function ReoTracker() {
   const { summary, last_sweep: lastSweep } = data;
   const swept = relativeTime(lastSweep?.finished_at);
   const flagged = (data.listings || []).filter(l => l.is_new || l.price_cut);
+  const freshCount = freshIds ? freshIds.size : 0;
 
   return (
     <section className="reo-tracker">
@@ -53,6 +78,7 @@ export default function ReoTracker() {
         <span>
           🏛 Freddie Mac REO tracker — {summary.active} active across{' '}
           {summary.metros_with_inventory} metro{summary.metros_with_inventory === 1 ? '' : 's'}
+          {freshCount > 0 && ` · 🔔 ${freshCount} since your last visit`}
           {summary.new > 0 && ` · ${summary.new} new this week`}
           {summary.price_cuts > 0 && ` · ${summary.price_cuts} price cut${summary.price_cuts === 1 ? '' : 's'}`}
           {swept && ` · swept ${swept}`}
@@ -70,7 +96,7 @@ export default function ReoTracker() {
           {flagged.map(l => (
             <a
               key={l.id}
-              className="reo-tracker-row"
+              className={`reo-tracker-row${freshIds?.has(l.id) ? ' reo-row-fresh' : ''}`}
               href={l.url || '#'}
               target="_blank"
               rel="noopener noreferrer"

@@ -27,6 +27,8 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
+import requests
+
 from data_pipeline import MARKET_DATA
 from homesteps_provider import fetch_homesteps_properties
 from models import Property
@@ -212,12 +214,18 @@ def _sweep_locked(force: bool, fetcher: Optional[Callable]) -> Dict:
             active_now = conn.execute(
                 "SELECT COUNT(*) FROM listings WHERE is_active=1"
             ).fetchone()[0]
-        return {"status": "ok", "started_at": started, "finished_at": finished,
-                "metros_done": len(MARKET_DATA), "listings_seen": len(seen),
-                "new_listings": counts["new"],
-                "price_changes": counts["price_changes"],
-                "deactivated": deactivated, "active_now": active_now,
-                "per_metro": per_metro}
+        summary = {"status": "ok", "started_at": started,
+                   "finished_at": finished,
+                   "metros_done": len(MARKET_DATA),
+                   "listings_seen": len(seen),
+                   "new_listings": counts["new"],
+                   "price_changes": counts["price_changes"],
+                   "deactivated": deactivated, "active_now": active_now,
+                   "new_listing_ids": counts["new_ids"],
+                   "price_cut_listing_ids": counts["price_cut_ids"],
+                   "per_metro": per_metro}
+        _maybe_alert(summary)  # optional webhook; never raises
+        return summary
     except Exception as e:
         logger.exception("REO sweep failed")
         with _connect() as conn:
@@ -228,10 +236,17 @@ def _sweep_locked(force: bool, fetcher: Optional[Callable]) -> Dict:
         raise
 
 
-def _upsert_seen(seen: Dict[str, Property]) -> Dict[str, int]:
-    """Insert new listings / refresh sightings / record price changes."""
+def _upsert_seen(seen: Dict[str, Property]) -> Dict:
+    """Insert new listings / refresh sightings / record price changes.
+
+    Also returns the ids of listings new this sweep and of price cuts
+    (drops only — increases are recorded but not flagged), for the
+    alert webhook and the sweep summary.
+    """
     now = _now()
     new_count = price_changes = 0
+    new_ids: List[str] = []
+    price_cut_ids: List[str] = []
     with _connect() as conn:
         for prop in seen.values():
             row = conn.execute(
@@ -255,6 +270,7 @@ def _upsert_seen(seen: Dict[str, Property]) -> Dict[str, int]:
                     "(listing_id, price, seen_at) VALUES (?,?,?)",
                     (prop.id, prop.list_price, now))
                 new_count += 1
+                new_ids.append(prop.id)
             else:
                 price_changed = row["list_price"] != prop.list_price
                 conn.execute(
@@ -280,7 +296,10 @@ def _upsert_seen(seen: Dict[str, Property]) -> Dict[str, int]:
                         "(listing_id, price, seen_at) VALUES (?,?,?)",
                         (prop.id, prop.list_price, now))
                     price_changes += 1
-    return {"new": new_count, "price_changes": price_changes}
+                    if prop.list_price < row["list_price"]:
+                        price_cut_ids.append(prop.id)
+    return {"new": new_count, "price_changes": price_changes,
+            "new_ids": new_ids, "price_cut_ids": price_cut_ids}
 
 
 def _deactivate_absent(seen_ids: List[str]) -> int:
@@ -301,6 +320,59 @@ def _deactivate_absent(seen_ids: List[str]) -> int:
             "WHERE is_active = 1 AND miss_count >= ?",
             (_DEACTIVATE_AFTER_MISSES,))
         return cur.rowcount
+
+
+def _alert_rows(ids: List[str]) -> List[Dict]:
+    """Compact listing details for the alert webhook payload."""
+    out = []
+    with _connect() as conn:
+        for i in range(0, len(ids), 50):  # SQLite param limit
+            chunk = ids[i:i + 50]
+            rows = conn.execute(
+                f"SELECT address, city, state, list_price, prev_price, url "
+                f"FROM listings WHERE id IN "
+                f"({','.join('?' * len(chunk))})", chunk).fetchall()
+            for r in rows:
+                out.append({
+                    "address": r["address"],
+                    "city_state": f'{r["city"]}, {r["state"]}',
+                    "price": r["list_price"],
+                    "prev_price": r["prev_price"],
+                    "url": r["url"],
+                })
+    return out
+
+
+def _maybe_alert(summary: Dict) -> None:
+    """POST sweep highlights to ALERT_WEBHOOK_URL when configured.
+
+    Zero-config when the env var is unset (the common case) and never
+    raises — an alerting failure must not fail the sweep.
+    """
+    url = os.environ.get("ALERT_WEBHOOK_URL", "").strip()
+    if not url:
+        return
+    if not (summary.get("new_listing_ids")
+            or summary.get("price_cut_listing_ids")):
+        return  # nothing noteworthy this sweep
+    payload = {
+        "swept_at": summary.get("finished_at"),
+        "counts": {
+            "listings_seen": summary.get("listings_seen"),
+            "new": summary.get("new_listings"),
+            "price_changes": summary.get("price_changes"),
+            "active_now": summary.get("active_now"),
+        },
+        "new": _alert_rows(summary.get("new_listing_ids") or []),
+        "price_cuts": _alert_rows(summary.get("price_cut_listing_ids") or []),
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code >= 400:
+            logger.warning("REO alert webhook returned HTTP %d",
+                           resp.status_code)
+    except Exception:
+        logger.exception("REO alert webhook failed (non-fatal)")
 
 
 def _flags(r, days: int) -> Dict:

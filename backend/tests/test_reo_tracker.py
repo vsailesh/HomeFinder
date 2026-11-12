@@ -339,3 +339,74 @@ def test_attach_reo_tracker_survives_db_error(monkeypatch):
     _attach_reo_tracker(results)  # must swallow the DB error
     assert "reo_tracker" not in results["deals"][0]
 
+
+# --- alert webhook ------------------------------------------------------
+
+def test_sweep_summary_carries_new_and_cut_ids():
+    first = _sweep(_prop(price=199000.0))
+    assert first["new_listing_ids"] == ["homesteps-x"]
+    assert first["price_cut_listing_ids"] == []
+    second = _sweep(_prop(price=179000.0))  # same listing, price cut
+    assert second["new_listing_ids"] == []
+    assert second["price_cut_listing_ids"] == ["homesteps-x"]
+
+
+def test_price_cut_ids_exclude_increases():
+    _sweep(_prop(price=199000.0))
+    result = _sweep(_prop(price=219000.0))  # increase: recorded, not cut
+    assert result["price_cut_listing_ids"] == []
+    assert result["price_changes"] == 1
+
+
+def test_webhook_not_called_when_env_unset(monkeypatch):
+    posted = []
+    monkeypatch.setattr(rt.requests, "post",
+                        lambda url, **k: posted.append(url))
+    monkeypatch.delenv("ALERT_WEBHOOK_URL", raising=False)
+    _sweep(_prop())
+    assert posted == []
+
+
+def test_webhook_posts_new_listings(monkeypatch):
+    posted = []
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
+    monkeypatch.setattr(
+        rt.requests, "post",
+        lambda url, json=None, timeout=None:
+            posted.append({"url": url, "json": json, "timeout": timeout})
+            or type("R", (), {"status_code": 200})())
+    _sweep(_prop())
+    assert len(posted) == 1
+    call = posted[0]
+    assert call["url"] == "https://hooks.example.test/x"
+    assert call["timeout"] == 10
+    body = call["json"]
+    assert body["counts"]["new"] == 1
+    assert len(body["new"]) == 1
+    assert body["new"][0]["address"] == "1 Main St"
+    assert body["new"][0]["city_state"] == "Chicago, IL"
+    assert body["price_cuts"] == []
+
+
+def test_webhook_skipped_when_nothing_new(monkeypatch):
+    _sweep(_prop())
+    posted = []
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
+    monkeypatch.setattr(
+        rt.requests, "post",
+        lambda url, **k: posted.append(url) or type("R", (), {"status_code": 200})())
+    result = _sweep(_prop())  # same price, nothing noteworthy
+    assert result["status"] == "ok"
+    assert posted == []
+
+
+def test_webhook_failure_never_breaks_sweep(monkeypatch):
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
+
+    def boom(url, json=None, timeout=None):
+        raise ConnectionError("webhook unreachable")
+    monkeypatch.setattr(rt.requests, "post", boom)
+    result = _sweep(_prop())
+    assert result["status"] == "ok"
+    assert result["new_listings"] == 1
+

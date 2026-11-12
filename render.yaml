@@ -18,3 +18,7 @@ services:
       # sends it as the X-Sweep-Token header). Unset = endpoint refuses.
       - key: SWEEP_TOKEN
         sync: false
+      # Optional: each REO sweep POSTs new/price-cut listings to this
+      # webhook URL (Slack/Discord Zapier etc.). Unset = no-op.
+      - key: ALERT_WEBHOOK_URL
+        sync: false
