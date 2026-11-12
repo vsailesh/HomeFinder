@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import SearchForm, { DEFAULT_SPECS, cleanParams } from '../components/SearchForm';
 import SavedSearches from '../components/SavedSearches';
 import ReoTracker from '../components/ReoTracker';
 import PropertyCard from '../components/PropertyCard';
+import CompareTray from '../components/CompareTray';
 import MortgageCalculator from '../components/MortgageCalculator';
 import { PriceDistributionChart, DealScoreChart, ValueVsPriceChart, SqftVsPriceScatter } from '../components/Charts';
 
 const PAGE_SIZE = 12;
+const COMPARE_KEY = 'home-finder:compare';
+const MAX_COMPARE = 4;
 
 function formatCurrency(val) {
   if (val == null) return '—';
@@ -22,6 +25,43 @@ export default function HomePage() {
   const [error, setError] = useState(null);
   const [lastParams, setLastParams] = useState(null);
   const [page, setPage] = useState(1);
+  const [compareDeals, setCompareDeals] = useState([]);
+
+  // Compare shortlist — hydrate from localStorage (full deal objects,
+  // so the tray survives pagination and reloads without a per-property
+  // backend endpoint).
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COMPARE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setCompareDeals(parsed.slice(0, MAX_COMPARE));
+      }
+    } catch {
+      window.localStorage.removeItem(COMPARE_KEY); // corrupt — start fresh
+    }
+  }, []);
+
+  const persistCompare = useCallback((next) => {
+    setCompareDeals(next);
+    try {
+      window.localStorage.setItem(COMPARE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage full/blocked — keep in-memory copy only.
+    }
+  }, []);
+
+  const handleToggleCompare = useCallback((deal) => {
+    const id = deal.property.id;
+    if (compareDeals.some(d => d.property.id === id)) {
+      persistCompare(compareDeals.filter(d => d.property.id !== id));
+    } else if (compareDeals.length < MAX_COMPARE) {
+      persistCompare([...compareDeals, { ...deal, saved_at: new Date().toISOString() }]);
+    }
+  }, [compareDeals, persistCompare]);
+
+  const compareIds = new Set(compareDeals.map(d => d.property.id));
+  const compareFull = compareDeals.length >= MAX_COMPARE;
 
   const runSearch = useCallback(async (params, pageNum = 1) => {
     setLoading(true);
@@ -139,6 +179,13 @@ export default function HomePage() {
 
       {/* REO inventory tracker */}
       <ReoTracker />
+
+      {/* Compare shortlist */}
+      <CompareTray
+        deals={compareDeals}
+        onRemove={(id) => persistCompare(compareDeals.filter(d => d.property.id !== id))}
+        onClear={() => persistCompare([])}
+      />
 
       {/* Loading */}
       {loading && (
@@ -279,7 +326,13 @@ export default function HomePage() {
           {/* Property Cards Grid */}
           <div className="deals-grid">
             {deals.map((deal, idx) => (
-              <PropertyCard key={deal.property.id || idx} deal={deal} />
+              <PropertyCard
+                key={deal.property.id || idx}
+                deal={deal}
+                compareOn={compareIds.has(deal.property.id)}
+                compareDisabled={compareFull}
+                onToggleCompare={handleToggleCompare}
+              />
             ))}
           </div>
 

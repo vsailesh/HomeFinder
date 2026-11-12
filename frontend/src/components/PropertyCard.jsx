@@ -16,7 +16,9 @@ function categoryClass(cat) {
   return `cat-${cat}`;
 }
 
-export default function PropertyCard({ deal }) {
+export default function PropertyCard({
+  deal, compareOn = false, compareDisabled = false, onToggleCompare,
+}) {
   const [showVars, setShowVars] = useState(false);
 
   const { property: prop, valuation: val, deal_score, deal_grade,
@@ -79,6 +81,21 @@ export default function PropertyCard({ deal }) {
             >
               PRICE CUT {reo_tracker.price_change_pct}%
             </span>
+          )}
+          {onToggleCompare && (
+            <button
+              type="button"
+              className={`compare-chip ${compareOn ? 'compare-chip-active' : ''}`}
+              onClick={() => onToggleCompare(deal)}
+              disabled={!compareOn && compareDisabled}
+              title={compareOn
+                ? 'Remove from compare tray'
+                : compareDisabled
+                  ? 'Compare tray is full (4 max) — remove one first'
+                  : 'Add to compare tray'}
+            >
+              {compareOn ? '✓ Comparing' : '± Compare'}
+            </button>
           )}
         </div>
         <div className="deal-badge">
