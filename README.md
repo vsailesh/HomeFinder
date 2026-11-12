@@ -14,6 +14,12 @@ Listing sources cascade in order: RapidAPI Zillow (full inventory, needs quota) 
 
 **REO tracker** — a daily sweep (GitHub Actions cron → `POST /api/reo/sweep`, plus a freshness-gated sweep on backend startup) records every HomeSteps listing ever sighted in SQLite (`REO_DB_PATH`, default `backend/reo_history.db`), so REO inventory that appeared and vanished between searches isn't lost. `GET /api/reo/inventory` reports active listings with new-this-week / price-cut flags; the frontend shows a tracker panel under the search form. Sweep history lives on the host disk — on Render's free tier it resets on deploy and rebuilds on the next sweep.
 
+**Compare tray** — shortlist up to 4 deals with the ± Compare chip on any card; the tray under the search form lines them up side-by-side (score, price vs value, rent, P&I, full carry, net cashflow, rent coverage, $/sqft, 5-yr ROI, REO badges). Shortlist persists in the browser (localStorage), surviving reloads and pagination.
+
+**10-year hold projection** — every card has a lazy "10-Year Hold Projection" toggle: rent vs full carry year by year, property value along the metro's ZHVI trend (3.5%/yr national fallback), loan amortization, equity build, cumulative cashflow, and net position at exit after 6% selling costs (`POST /api/property/projection`).
+
+**Deal alerts** — the REO tracker panel counts listings new or price-cut **since your last visit** (per-browser timestamp) and highlights those rows; optionally set `ALERT_WEBHOOK_URL` and every sweep POSTs new/price-cut listings to that webhook (Slack/Discord/Zapier). Unset = no-op.
+
 ## Running locally
 
 Backend (port 8001):
@@ -38,6 +44,7 @@ npm run dev
 |---|---|---|
 | `RAPIDAPI_KEY` | backend | Live Zillow listings. Unset → mock generator |
 | `SWEEP_TOKEN` | backend + GH secret | Locks `POST /api/reo/sweep` (sent as `X-Sweep-Token` header). Unset → endpoint refuses |
+| `ALERT_WEBHOOK_URL` | backend | Optional webhook (Slack/Discord/Zapier) receiving new/price-cut REO listings after each sweep. Unset → no-op |
 | `REO_DB_PATH` | backend | REO tracker SQLite path. Default `backend/reo_history.db` |
 | `REO_SWEEP_ON_STARTUP` | backend | `0` disables the startup sweep |
 | `ALLOWED_ORIGINS` | backend | CORS allowlist, comma-separated. Default `*` (no credentials) |
@@ -49,6 +56,7 @@ npm run dev
 |---|---|
 | `GET /api/search` | Search + valuate + score. Filters (city/state/zip, price, beds/baths, sqft, type, year, HOA, DOM, `min_rent_coverage`), `sort_by` (deal_score, cashflow_desc, price_asc/desc, newest), opt-in `page`/`page_size` |
 | `GET /api/property/{id}/valuation` | Full valuation for a previously served listing (in-memory registry — run a search first) |
+| `POST /api/property/projection` | 10-year hold projection: rent vs carry, appreciation, amortization, equity, exit net position. Body: the deal's price/value/city/state/zip/tax/HOA |
 | `GET /api/loan/rate` | Current 30yr fixed base rate (live FRED, cached 6h) |
 | `POST /api/loan/quote` | Prorated mortgage quote (credit/loan-type/LTV/term adjustments, DTI, lender comparison) |
 | `GET /api/cities` | Supported cities + market $/sqft + metro trend |
