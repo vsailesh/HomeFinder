@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
+const SAVED_KEY = 'home-finder:saved-searches';
+
 function formatCurrency(val) {
   if (val == null) return '—';
   return '$' + Number(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -19,6 +21,32 @@ function relativeTime(iso) {
 }
 
 /**
+ * Does a tracker listing satisfy a saved search's criteria? Only the
+ * fields the tracker carries are enforced (location, price, beds,
+ * baths, sqft) — rent-coverage/sort criteria don't apply to raw REO
+ * inventory. City matches equal-or-contains either way so a metro
+ * search ("Baltimore") still matches its suburbs ("Gwynn Oak") when
+ * the suburb name contains it, and state is the real gate.
+ */
+export function matchesSavedSearch(l, p = {}) {
+  if (p.state && (l.state || '').toUpperCase() !== String(p.state).toUpperCase()) return false;
+  if (p.city) {
+    const want = String(p.city).toLowerCase();
+    const have = (l.city || '').toLowerCase();
+    if (have !== want && !have.includes(want) && !want.includes(have)) return false;
+  }
+  if (p.zip_code && l.zip_code && String(l.zip_code) !== String(p.zip_code)) return false;
+  if (p.max_price != null && l.list_price > Number(p.max_price)) return false;
+  if (p.min_price != null && l.list_price < Number(p.min_price)) return false;
+  if (p.min_bedrooms != null && (l.bedrooms || 0) < Number(p.min_bedrooms)) return false;
+  if (p.max_bedrooms != null && l.bedrooms != null && l.bedrooms > Number(p.max_bedrooms)) return false;
+  if (p.min_bathrooms != null && (l.bathrooms || 0) < Number(p.min_bathrooms)) return false;
+  if (p.min_sqft != null && l.sqft != null && l.sqft < Number(p.min_sqft)) return false;
+  if (p.max_sqft != null && l.sqft != null && l.sqft > Number(p.max_sqft)) return false;
+  return true;
+}
+
+/**
  * REO inventory tracker panel — summary of Freddie Mac HomeSteps
  * listings persisted across daily sweeps, with new/price-cut flags.
  * Listings that arrived (or cut price) since the visitor's previous
@@ -28,10 +56,23 @@ function relativeTime(iso) {
  */
 const VISIT_KEY = 'home-finder:last-visit';
 
-export default function ReoTracker() {
+export default function ReoTracker({ onLoadSearch }) {
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [freshIds, setFreshIds] = useState(null); // Set of ids new since last visit
+  const [savedSearches, setSavedSearches] = useState([]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SAVED_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setSavedSearches(parsed);
+      }
+    } catch {
+      // Corrupt storage — no saved-search matching this visit.
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +109,15 @@ export default function ReoTracker() {
   const flagged = (data.listings || []).filter(l => l.is_new || l.price_cut);
   const freshCount = freshIds ? freshIds.size : 0;
 
+  // Saved searches × active REO inventory (client-side; the tracker
+  // already holds every swept listing, so no extra requests).
+  const savedMatches = savedSearches
+    .map(search => ({
+      search,
+      listings: (data.listings || []).filter(l => matchesSavedSearch(l, search.params)),
+    }))
+    .filter(m => m.listings.length > 0);
+
   return (
     <section className="reo-tracker">
       <button
@@ -88,6 +138,26 @@ export default function ReoTracker() {
 
       {expanded && (
         <div className="reo-tracker-body">
+          {savedMatches.length > 0 && (
+            <div className="reo-saved-matches">
+              <div className="reo-saved-matches-title">📌 Saved-search REO matches</div>
+              {savedMatches.map(({ search, listings }) => (
+                <button
+                  key={search.id}
+                  type="button"
+                  className="reo-saved-match-row"
+                  onClick={() => onLoadSearch && onLoadSearch(search.params)}
+                  title={listings.map(l => `${l.address}, ${l.city} — ${formatCurrency(l.list_price)}`).join('\n')}
+                >
+                  <span className="reo-saved-match-name">{search.name}</span>
+                  <span className="reo-saved-match-count">
+                    {listings.length} REO match{listings.length === 1 ? '' : 'es'}
+                    {listings.some(l => l.is_new) && ' · new arrivals'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {flagged.length === 0 && (
             <div className="reo-tracker-empty">
               No new or price-cut listings in the last {data.window_days} days.

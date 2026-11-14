@@ -178,7 +178,7 @@ export default function HomePage() {
       />
 
       {/* REO inventory tracker */}
-      <ReoTracker />
+      <ReoTracker onLoadSearch={handleLoadSaved} />
 
       {/* Compare shortlist */}
       <CompareTray
