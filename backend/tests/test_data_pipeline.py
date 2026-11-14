@@ -1,4 +1,6 @@
-"""Data pipeline tests — registry, mock generator honesty."""
+"""Data pipeline tests — registry, mock generator honesty, outage cache."""
+import pytest
+
 import data_pipeline as dp
 from models import Property, PropertyType, PropertyCondition, SearchSpecs
 
@@ -67,6 +69,92 @@ class TestMockGenerator:
     def test_state_fallback_matches_state(self):
         city, data = dp._pick_city(SearchSpecs(state="MD"))
         assert data["state"] == "MD"
+
+
+class TestZillowOutageCache:
+    """RapidAPI provider outages last days — the last good Zillow
+    results per market are served stale (within a grace window)
+    before falling through to HomeSteps/mock."""
+
+    @pytest.fixture(autouse=True)
+    def clean_cache(self, monkeypatch):
+        monkeypatch.setattr(dp, "_zillow_cache", type(dp._zillow_cache)())
+        monkeypatch.setattr(dp, "_last_source",
+                            {"tier": None, "cached_at": None})
+
+    def _specs(self, city="Chicago", **kw):
+        return SearchSpecs(city=city, state="IL", **kw)
+
+    def _with_sources(self, monkeypatch, rapidapi, homesteps):
+        monkeypatch.setattr(dp, "fetch_rapidapi_properties", rapidapi)
+        monkeypatch.setattr(dp, "fetch_homesteps_properties", homesteps)
+
+    def test_success_populates_cache(self, monkeypatch):
+        props = [make_property("z1", source="rapidapi-zillow")]
+        self._with_sources(
+            monkeypatch,
+            lambda specs, limit=50: props,
+            lambda city, state, zip_code=None: [])
+        out = dp.fetch_live_listings(self._specs())
+        assert out == props
+        assert dp.last_source_info()["tier"] == "zillow"
+        assert dp._zillow_cache  # remembered
+
+    def test_outage_serves_stale_before_homesteps(self, monkeypatch):
+        props = [make_property("z1", source="rapidapi-zillow")]
+        reo = [make_property("reo1", source="homesteps-freddie-mac")]
+        calls = {"rapid": 0, "reo": 0}
+
+        def rapid(specs, limit=50):
+            calls["rapid"] += 1
+            return props if calls["rapid"] == 1 else []  # then outage
+
+        self._with_sources(
+            monkeypatch, rapid,
+            lambda city, state, zip_code=None:
+                calls.__setitem__("reo", calls["reo"] + 1) or reo)
+        first = dp.fetch_live_listings(self._specs())
+        assert first == props
+        second = dp.fetch_live_listings(self._specs())  # outage
+        assert second == props  # stale cache, not REO
+        assert calls["reo"] == 0
+        info = dp.last_source_info()
+        assert info["tier"] == "zillow-cache"
+        assert info["cached_at"] is not None
+
+    def test_expired_cache_falls_through(self, monkeypatch):
+        props = [make_property("z1", source="rapidapi-zillow")]
+        calls = {"n": 0}
+
+        def rapid(specs, limit=50):
+            calls["n"] += 1
+            return props if calls["n"] == 1 else []  # then outage
+
+        self._with_sources(
+            monkeypatch, rapid,
+            lambda city, state, zip_code=None: [])
+        dp.fetch_live_listings(self._specs())
+        key = dp._cache_key(self._specs())
+        ts = dp._zillow_cache[key][1]
+        dp._zillow_cache[key] = (props, ts - dp._STALE_GRACE_SECONDS - 1)
+        out = dp.fetch_live_listings(self._specs())  # outage + expired
+        assert all(p.source == "mock-generator" for p in out)
+        assert dp.last_source_info()["tier"] == "mock"
+
+    def test_cache_key_market_scoped(self):
+        a = dp._cache_key(SearchSpecs(city="Chicago", state="IL"))
+        b = dp._cache_key(SearchSpecs(city="chicago ", state="il"))
+        c = dp._cache_key(SearchSpecs(city="Detroit", state="MI"))
+        assert a == b          # normalization: case/whitespace insensitive
+        assert a != c          # markets don't collide
+
+    def test_cache_cap_eviction(self, monkeypatch):
+        monkeypatch.setattr(dp, "_ZILLOW_CACHE_CAP", 2)
+        monkeypatch.setattr(dp, "_zillow_cache", type(dp._zillow_cache)())
+        for city in ("a", "b", "c"):
+            dp._remember_zillow((city, "IL", ""), [make_property(city)])
+        assert len(dp._zillow_cache) == 2
+        assert ("a", "IL", "") not in dp._zillow_cache  # oldest evicted
 
 
 class TestMarketSqftPrice:

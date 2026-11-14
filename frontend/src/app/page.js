@@ -117,11 +117,17 @@ export default function HomePage() {
   const baselineApprec = baseline?.appreciation_1y;
   const deals = results?.deals || [];
   const sources = new Set(deals.map(d => d.property.source));
-  const sourceNote = sources.size === 1 && sources.has('homesteps-freddie-mac')
-    ? '🏦 Showing real Freddie Mac REO listings — bank-owned inventory is limited. Full Zillow coverage returns when the listings API quota resets.'
-    : sources.size === 1 && sources.has('mock-generator')
-      ? '⚠️ Demo data — no live listings available for this search right now.'
-      : null;
+  const dataSource = results?.data_source;
+  const cacheAgeHours = dataSource?.cached_at
+    ? Math.round((Date.now() - new Date(dataSource.cached_at).getTime()) / 3600000)
+    : null;
+  const sourceNote = dataSource?.tier === 'zillow-cache'
+    ? `⚠️ Live listings API unreachable — showing real Zillow listings cached ${cacheAgeHours != null ? `${cacheAgeHours}h` : ''} ago. Fresh data returns when the provider recovers.`
+    : sources.size === 1 && sources.has('homesteps-freddie-mac')
+      ? '🏦 Showing real Freddie Mac REO listings — bank-owned inventory is limited. Full Zillow coverage returns when the listings API quota resets.'
+      : sources.size === 1 && sources.has('mock-generator')
+        ? '⚠️ Demo data — no live listings available for this search right now.'
+        : null;
   const totalPages = results?.total_pages || 0;
   const sortBy = results?.search_specs?.sort_by || 'deal_score';
   const rangeStart = results?.total_results

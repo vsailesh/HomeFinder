@@ -4,12 +4,14 @@ Handles fetching property listings from multiple sources and normalizing them.
 Includes realistic mock data generator for demo/development.
 """
 import logging
+import os
 import random
 import hashlib
 import math
+import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from models import Property, PropertyType, PropertyCondition, SearchSpecs
 from rapidapi_zillow import fetch_rapidapi_properties
 from homesteps_provider import fetch_homesteps_properties
@@ -37,6 +39,57 @@ def register_listings(properties: List[Property]) -> None:
 def get_property_by_id(property_id: str) -> Optional[Property]:
     """Return a previously served property by ID, if still registered."""
     return _property_registry.get(property_id)
+
+
+# ── Zillow Outage Cache ───────────────────────────────────────────────────────
+# RapidAPI provider outages can last days, and the tiers below Zillow are
+# thin (HomeSteps REO) or demo data (mock). Keep the last good Zillow
+# results per market in memory and serve them stale — within a grace
+# window — before falling through, so an outage degrades to "recent real
+# listings" instead of "no real listings". In-memory only: a cold start
+# (Render sleeps after 15min) simply loses the cache, never serves
+# incorrectly old data.
+
+_STALE_GRACE_SECONDS = int(os.environ.get(
+    "ZILLOW_CACHE_TTL_SECONDS", str(7 * 86400)))
+_ZILLOW_CACHE_CAP = 40  # markets kept (20 served metros + slack)
+_zillow_cache: "OrderedDict[Tuple[str, str, str], Tuple[List[Property], float]]" = OrderedDict()
+# Tier that served the most recent fetch_live_listings call — surfaced
+# through /api/search so the UI can label stale-cache results.
+_last_source: Dict = {"tier": None, "cached_at": None}
+
+
+def last_source_info() -> Dict:
+    """What served the last fetch: tier is one of 'zillow',
+    'zillow-cache', 'homesteps', 'mock' (cached_at only for the cache)."""
+    return dict(_last_source)
+
+
+def _cache_key(specs: SearchSpecs) -> Tuple[str, str, str]:
+    return ((specs.city or "").strip().lower(),
+            (specs.state or "").strip().upper(),
+            (specs.zip_code or "").strip())
+
+
+def _remember_zillow(key: Tuple[str, str, str],
+                     props: List[Property]) -> None:
+    _zillow_cache[key] = (props, time.time())
+    _zillow_cache.move_to_end(key)
+    while len(_zillow_cache) > _ZILLOW_CACHE_CAP:
+        _zillow_cache.popitem(last=False)
+
+
+def _stale_zillow(key: Tuple[str, str, str]) -> Optional[List[Property]]:
+    entry = _zillow_cache.get(key)
+    if not entry:
+        return None
+    props, ts = entry
+    age = time.time() - ts
+    if age > _STALE_GRACE_SECONDS:
+        _zillow_cache.pop(key, None)  # expired — drop, don't serve
+        return None
+    return list(props)
+
 
 # ── Realistic Market Data for Mock Generation ─────────────────────────────────
 # Based on real-world 2026 market averages
@@ -353,15 +406,32 @@ def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
     """Fetch listings, preferring real sources at each tier:
 
     1. RapidAPI Zillow (full market inventory; needs quota)
-    2. Freddie Mac HomeSteps REO (real but thin; no key)
-    3. Mock generator (labeled demo data — last resort)
+    2. Stale Zillow cache — recent real listings held from the last
+       successful fetch when RapidAPI is failing (provider outages
+       last days; grace window ZILLOW_CACHE_TTL_SECONDS, default 7d)
+    3. Freddie Mac HomeSteps REO (real but thin; no key)
+    4. Mock generator (labeled demo data — last resort)
     """
+    key = _cache_key(specs)
     logger.info("Fetching realtime listings from Zillow via RapidAPI...")
     live_props = fetch_rapidapi_properties(specs, limit=max(count, 50))
     if live_props and len(live_props) > 0:
         logger.info("Successfully fetched %d live properties.", len(live_props))
+        _remember_zillow(key, live_props)
         register_listings(live_props)
+        _last_source.update(tier="zillow", cached_at=None)
         return live_props
+
+    stale = _stale_zillow(key)
+    if stale:
+        logger.warning(
+            "RapidAPI unavailable — serving %d cached Zillow listings for "
+            "%s (cached %.1fh ago).", len(stale), key,
+            (time.time() - _zillow_cache[key][1]) / 3600)
+        register_listings(stale)
+        _last_source.update(tier="zillow-cache",
+                            cached_at=_zillow_cache[key][1])
+        return stale
 
     logger.info("RapidAPI empty/failed — trying Freddie Mac HomeSteps REO.")
     reo_props = _apply_specs_filter(
@@ -370,11 +440,13 @@ def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
     if reo_props:
         logger.info("HomeSteps returned %d real REO listings.", len(reo_props))
         register_listings(reo_props)
+        _last_source.update(tier="homesteps", cached_at=None)
         return reo_props
 
     logger.info("No real sources available — using mock listing generator.")
     mock_props = generate_mock_listings(specs, count=count)
     register_listings(mock_props)
+    _last_source.update(tier="mock", cached_at=None)
     return mock_props
 
 

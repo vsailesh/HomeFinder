@@ -11,7 +11,8 @@ from models import (
     PropertyCondition
 )
 from valuation_engine import valuate_property, ValuationError
-from data_pipeline import fetch_live_listings, get_market_sqft_price
+from data_pipeline import (fetch_live_listings, get_market_sqft_price,
+                           last_source_info)
 from loan_engine import get_market_base_rate
 from market_baselines import get_metro_baseline, get_zip_rent
 
@@ -420,6 +421,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
             "page": page,
             "page_size": page_size,
             "search_specs": specs.model_dump(),
+            "data_source": last_source_info(),
             "message": "No properties could be valuated with the available data."
         }
 
@@ -472,4 +474,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         "search_specs": specs.model_dump(),
         "appreciation_assumption": appreciation_meta,
         "market_baseline": market_baseline,
+        # Which tier served the listings (zillow / zillow-cache /
+        # homesteps / mock) — lets the UI label stale-cache results.
+        "data_source": last_source_info(),
     }
