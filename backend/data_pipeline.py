@@ -50,19 +50,23 @@ def get_property_by_id(property_id: str) -> Optional[Property]:
 # (Render sleeps after 15min) simply loses the cache, never serves
 # incorrectly old data.
 
-_STALE_GRACE_SECONDS = int(os.environ.get(
-    "ZILLOW_CACHE_TTL_SECONDS", str(7 * 86400)))
+def _env_int(name: str, default: int) -> int:
+    """Import-safe env parse: empty/malformed values fall back to the
+    default instead of crashing module import (uvicorn boot)."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r — expected integer seconds, "
+                       "using default %d", name, raw, default)
+        return default
+
+
+_STALE_GRACE_SECONDS = _env_int("ZILLOW_CACHE_TTL_SECONDS", 7 * 86400)
 _ZILLOW_CACHE_CAP = 40  # markets kept (20 served metros + slack)
 _zillow_cache: "OrderedDict[Tuple[str, str, str], Tuple[List[Property], float]]" = OrderedDict()
-# Tier that served the most recent fetch_live_listings call — surfaced
-# through /api/search so the UI can label stale-cache results.
-_last_source: Dict = {"tier": None, "cached_at": None}
-
-
-def last_source_info() -> Dict:
-    """What served the last fetch: tier is one of 'zillow',
-    'zillow-cache', 'homesteps', 'mock' (cached_at only for the cache)."""
-    return dict(_last_source)
 
 
 def _cache_key(specs: SearchSpecs) -> Tuple[str, str, str]:
@@ -79,7 +83,10 @@ def _remember_zillow(key: Tuple[str, str, str],
         _zillow_cache.popitem(last=False)
 
 
-def _stale_zillow(key: Tuple[str, str, str]) -> Optional[List[Property]]:
+def _stale_zillow(key: Tuple[str, str, str]
+                  ) -> Optional[Tuple[List[Property], float]]:
+    """(Cached listings, cached-at epoch seconds) when a fresh-enough
+    entry exists; expired entries are dropped, never served."""
     entry = _zillow_cache.get(key)
     if not entry:
         return None
@@ -88,7 +95,7 @@ def _stale_zillow(key: Tuple[str, str, str]) -> Optional[List[Property]]:
     if age > _STALE_GRACE_SECONDS:
         _zillow_cache.pop(key, None)  # expired — drop, don't serve
         return None
-    return list(props)
+    return list(props), ts
 
 
 # ── Realistic Market Data for Mock Generation ─────────────────────────────────
@@ -363,7 +370,13 @@ def _apply_specs_filter(props: List[Property],
                         specs: SearchSpecs) -> List[Property]:
     """Filter fetched listings against the search specs (HomeSteps has
     no server-side filtering; the mock and RapidAPI paths already
-    apply specs at fetch time)."""
+    apply specs at fetch time — and the stale Zillow cache was filtered
+    by whatever search populated it, so it must be re-filtered too).
+
+    Listings missing a field never violate that field's max filters;
+    min filters require the field to be present (an unknown can't
+    demonstrate a minimum).
+    """
     def keep(p: Property) -> bool:
         if specs.zip_code and p.zip_code != specs.zip_code:
             return False
@@ -371,17 +384,23 @@ def _apply_specs_filter(props: List[Property],
             return False
         if specs.max_price is not None and p.list_price > specs.max_price:
             return False
-        if specs.min_bedrooms is not None and p.bedrooms < specs.min_bedrooms:
+        if specs.min_bedrooms is not None and (
+                p.bedrooms is None or p.bedrooms < specs.min_bedrooms):
             return False
-        if specs.max_bedrooms is not None and p.bedrooms > specs.max_bedrooms:
+        if specs.max_bedrooms is not None and (
+                p.bedrooms is not None and p.bedrooms > specs.max_bedrooms):
             return False
-        if specs.min_bathrooms is not None and p.bathrooms < specs.min_bathrooms:
+        if specs.min_bathrooms is not None and (
+                p.bathrooms is None or p.bathrooms < specs.min_bathrooms):
             return False
-        if specs.max_bathrooms is not None and p.bathrooms > specs.max_bathrooms:
+        if specs.max_bathrooms is not None and (
+                p.bathrooms is not None and p.bathrooms > specs.max_bathrooms):
             return False
-        if specs.min_sqft is not None and p.sqft < specs.min_sqft:
+        if specs.min_sqft is not None and (
+                p.sqft is None or p.sqft < specs.min_sqft):
             return False
-        if specs.max_sqft is not None and p.sqft > specs.max_sqft:
+        if specs.max_sqft is not None and (
+                p.sqft is not None and p.sqft > specs.max_sqft):
             return False
         if specs.property_types and p.property_type not in specs.property_types:
             return False
@@ -402,15 +421,24 @@ def _apply_specs_filter(props: List[Property],
     return [p for p in props if keep(p)]
 
 
-def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
+def fetch_live_listings(specs: SearchSpecs,
+                        count: int = 50) -> Tuple[List[Property], Dict]:
     """Fetch listings, preferring real sources at each tier:
 
     1. RapidAPI Zillow (full market inventory; needs quota)
     2. Stale Zillow cache — recent real listings held from the last
        successful fetch when RapidAPI is failing (provider outages
-       last days; grace window ZILLOW_CACHE_TTL_SECONDS, default 7d)
+       last days; grace window ZILLOW_CACHE_TTL_SECONDS, default 7d).
+       Re-filtered against the current specs: the cached set was
+       filtered by whatever search populated it.
     3. Freddie Mac HomeSteps REO (real but thin; no key)
     4. Mock generator (labeled demo data — last resort)
+
+    Returns (listings, source_info). source_info["tier"] is one of
+    'zillow' / 'zillow-cache' / 'homesteps' / 'mock'; 'cached_at'
+    (epoch seconds) is set only for the cache tier. The source rides
+    with the return value — not module state — so concurrent calls
+    can't mislabel each other's responses.
     """
     key = _cache_key(specs)
     logger.info("Fetching realtime listings from Zillow via RapidAPI...")
@@ -419,19 +447,21 @@ def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
         logger.info("Successfully fetched %d live properties.", len(live_props))
         _remember_zillow(key, live_props)
         register_listings(live_props)
-        _last_source.update(tier="zillow", cached_at=None)
-        return live_props
+        return live_props, {"tier": "zillow", "cached_at": None}
 
     stale = _stale_zillow(key)
     if stale:
-        logger.warning(
-            "RapidAPI unavailable — serving %d cached Zillow listings for "
-            "%s (cached %.1fh ago).", len(stale), key,
-            (time.time() - _zillow_cache[key][1]) / 3600)
-        register_listings(stale)
-        _last_source.update(tier="zillow-cache",
-                            cached_at=_zillow_cache[key][1])
-        return stale
+        props, ts = stale
+        props = _apply_specs_filter(props, specs)
+        if props:
+            logger.warning(
+                "RapidAPI unavailable — serving %d cached Zillow listings "
+                "for %s (cached %.1fh ago).", len(props), key,
+                (time.time() - ts) / 3600)
+            register_listings(props)
+            return props, {"tier": "zillow-cache", "cached_at": ts}
+        logger.warning("RapidAPI unavailable and cached Zillow listings for "
+                       "%s match no current filters — falling through.", key)
 
     logger.info("RapidAPI empty/failed — trying Freddie Mac HomeSteps REO.")
     reo_props = _apply_specs_filter(
@@ -440,14 +470,12 @@ def fetch_live_listings(specs: SearchSpecs, count: int = 50) -> List[Property]:
     if reo_props:
         logger.info("HomeSteps returned %d real REO listings.", len(reo_props))
         register_listings(reo_props)
-        _last_source.update(tier="homesteps", cached_at=None)
-        return reo_props
+        return reo_props, {"tier": "homesteps", "cached_at": None}
 
     logger.info("No real sources available — using mock listing generator.")
     mock_props = generate_mock_listings(specs, count=count)
     register_listings(mock_props)
-    _last_source.update(tier="mock", cached_at=None)
-    return mock_props
+    return mock_props, {"tier": "mock", "cached_at": None}
 
 
 def _pick_city(specs: SearchSpecs) -> tuple[str, dict]:

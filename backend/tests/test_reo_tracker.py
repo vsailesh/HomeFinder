@@ -367,6 +367,20 @@ def test_webhook_not_called_when_env_unset(monkeypatch):
     assert posted == []
 
 
+def test_rebuild_sweep_does_not_post(monkeypatch):
+    """First sweep on an empty DB (every cold start on ephemeral disk)
+    flags the whole inventory as new — that's a rebuild, not news."""
+    posted = []
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
+    monkeypatch.setattr(
+        rt.requests, "post",
+        lambda url, **k: posted.append(url)
+        or type("R", (), {"status_code": 200})())
+    result = _sweep(_prop())  # fresh DB → everything "new"
+    assert result["new_listings"] == 1
+    assert posted == []
+
+
 def test_webhook_posts_new_listings(monkeypatch):
     posted = []
     monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
@@ -375,7 +389,8 @@ def test_webhook_posts_new_listings(monkeypatch):
         lambda url, json=None, timeout=None:
             posted.append({"url": url, "json": json, "timeout": timeout})
             or type("R", (), {"status_code": 200})())
-    _sweep(_prop())
+    _sweep(_prop("seed-1", price=150000.0))  # prime history (rebuild)
+    _sweep(_prop("seed-1", price=150000.0), _prop())  # adds homesteps-x
     assert len(posted) == 1
     call = posted[0]
     assert call["url"] == "https://hooks.example.test/x"
@@ -402,11 +417,38 @@ def test_webhook_skipped_when_nothing_new(monkeypatch):
 
 def test_webhook_failure_never_breaks_sweep(monkeypatch):
     monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
+    _sweep(_prop("seed-1", price=150000.0))  # prime history (rebuild)
 
     def boom(url, json=None, timeout=None):
         raise ConnectionError("webhook unreachable")
     monkeypatch.setattr(rt.requests, "post", boom)
-    result = _sweep(_prop())
+    result = _sweep(_prop("seed-1", price=150000.0), _prop())
     assert result["status"] == "ok"
     assert result["new_listings"] == 1
+
+
+def test_webhook_payload_build_failure_never_breaks_sweep(monkeypatch):
+    """Payload construction re-reads the DB — a failure there must be
+    as non-fatal as a failed POST (the 'never raises' contract)."""
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.test/x")
+    _sweep(_prop("seed-1", price=150000.0))  # prime history (rebuild)
+
+    def boom(ids):
+        raise sqlite3.OperationalError("db gone")
+    monkeypatch.setattr(rt, "_alert_rows", boom)
+    result = _sweep(_prop("seed-1", price=150000.0), _prop())
+    assert result["status"] == "ok"
+    assert result["new_listings"] == 1
+
+
+def test_sweep_records_listing_metro():
+    """Listings carry their own (often suburb) city — the metro whose
+    sweep found them must stay attached for metro-level matching."""
+    _sweep(_prop(city="Evanston"))  # fetched under the Chicago metro
+    row = _row()
+    assert row["metro"] == "Chicago"
+    assert row["city"] == "Evanston"
+    inv = rt.get_inventory()["listings"][0]
+    assert inv["metro"] == "Chicago"
+    assert inv["city"] == "Evanston"
 

@@ -11,8 +11,7 @@ from models import (
     PropertyCondition
 )
 from valuation_engine import valuate_property, ValuationError
-from data_pipeline import (fetch_live_listings, get_market_sqft_price,
-                           last_source_info)
+from data_pipeline import fetch_live_listings, get_market_sqft_price
 from loan_engine import get_market_base_rate
 from market_baselines import get_metro_baseline, get_zip_rent
 
@@ -281,11 +280,12 @@ def score_deal(prop: Property, val: ValuationResult,
 
     # Full monthly carry: P&I + tax/12 + insurance estimate + HOA.
     # Real tax when the listing publishes it (HomeSteps does, mock
-    # fabricates it); otherwise ~1.1%/yr of list. Insurance assumed
-    # 0.35%/yr of list when unknown.
-    annual_tax = prop.annual_tax or prop.list_price * 0.011
+    # fabricates it — a published $0 is real, only None falls back to
+    # ~1.1%/yr of list). Insurance assumed 0.35%/yr of list when unknown.
+    annual_tax = (prop.annual_tax if prop.annual_tax is not None
+                  else prop.list_price * 0.011)
     insurance = prop.list_price * 0.0035 / 12
-    hoa = prop.hoa_fee or 0.0
+    hoa = prop.hoa_fee if prop.hoa_fee is not None else 0.0
     carry = round(payment + annual_tax / 12 + insurance + hoa, 2)
     net_cf = round(rent - carry, 2) if rent is not None else None
 
@@ -346,8 +346,9 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
                    else "national-default"),
     }
 
-    # Fetch listings
-    properties = fetch_live_listings(specs, count=60)
+    # Fetch listings (source_info rides with the fetch — which tier
+    # served THIS call, immune to concurrent calls)
+    properties, source_info = fetch_live_listings(specs, count=60)
 
     if not properties:
         return {
@@ -365,6 +366,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
             "page": page,
             "page_size": page_size,
             "search_specs": specs.model_dump(),
+            "data_source": source_info,
             "message": "No properties found matching your criteria."
         }
 
@@ -421,7 +423,7 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
             "page": page,
             "page_size": page_size,
             "search_specs": specs.model_dump(),
-            "data_source": last_source_info(),
+            "data_source": source_info,
             "message": "No properties could be valuated with the available data."
         }
 
@@ -476,5 +478,5 @@ def optimize_search(specs: SearchSpecs, page: Optional[int] = None,
         "market_baseline": market_baseline,
         # Which tier served the listings (zillow / zillow-cache /
         # homesteps / mock) — lets the UI label stale-cache results.
-        "data_source": last_source_info(),
+        "data_source": source_info,
     }

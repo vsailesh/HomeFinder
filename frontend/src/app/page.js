@@ -118,8 +118,10 @@ export default function HomePage() {
   const deals = results?.deals || [];
   const sources = new Set(deals.map(d => d.property.source));
   const dataSource = results?.data_source;
+  // cached_at arrives as epoch SECONDS (backend time.time()) — JS
+  // Dates take milliseconds, so convert before diffing.
   const cacheAgeHours = dataSource?.cached_at
-    ? Math.round((Date.now() - new Date(dataSource.cached_at).getTime()) / 3600000)
+    ? Math.round((Date.now() - new Date(dataSource.cached_at * 1000).getTime()) / 3600000)
     : null;
   const sourceNote = dataSource?.tier === 'zillow-cache'
     ? `⚠️ Live listings API unreachable — showing real Zillow listings cached ${cacheAgeHours != null ? `${cacheAgeHours}h` : ''} ago. Fresh data returns when the provider recovers.`

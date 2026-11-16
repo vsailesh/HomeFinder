@@ -92,6 +92,15 @@ class TestBuildProjection:
         assert all(r["carry_mo"] > 0 and r["equity"] > 0
                    for r in p["rows"])
 
+    def test_zero_published_tax_is_honored(self):
+        # HomeSteps REO publishes real $0 taxes — 0 must not be
+        # replaced by the 1.1%-of-list assumption.
+        p = build_projection(list_price=300000, annual_tax=0.0, **BALT)
+        assert p["assumptions"]["annual_tax"] == 0
+        pi = p["assumptions"]["monthly_pi"]
+        ins_mo = 300000 * 0.0035 / 12
+        assert abs(p["rows"][0]["carry_mo"] - (pi + ins_mo)) < 0.51
+
     def test_zip_rent_preferred_when_available(self, monkeypatch):
         import projection
         monkeypatch.setattr(projection, "get_zip_rent", lambda z: 2500.0)

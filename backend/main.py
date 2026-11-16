@@ -210,11 +210,15 @@ def _attach_reo_tracker(results: dict) -> None:
 
 
 @app.post("/api/property/projection")
-async def property_projection(req: ProjectionRequest):
+def property_projection(req: ProjectionRequest):
     """10-year hold projection: rent vs full carry year by year, plus
     value appreciation, amortization, equity build, and net position at
     exit. Inputs come from the client's deal object (no server-side
-    property lookup — live caches shift between calls)."""
+    property lookup — live caches shift between calls).
+
+    Plain `def` (not async): a cache-cold build fetches multi-MB Zillow
+    Research CSVs, which must run in the threadpool — not on the event
+    loop, where it would stall every concurrent request."""
     return build_projection(
         list_price=req.list_price,
         estimated_value=req.estimated_value,

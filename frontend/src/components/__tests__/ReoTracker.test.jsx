@@ -43,6 +43,16 @@ describe('matchesSavedSearch (pure)', () => {
       .toBe(false); // state mismatch fails even if names overlapped
   });
 
+  it('a suburb listing matches its metro search via the metro tag', () => {
+    // Suburb city strings share no substring with the metro name —
+    // only the swept-metro tag connects them.
+    const suburb = { ...L, city: 'Gwynn Oak', state: 'MD', metro: 'Baltimore' };
+    expect(matchesSavedSearch(suburb, { city: 'Baltimore', state: 'MD' }))
+      .toBe(true);
+    expect(matchesSavedSearch(suburb, { city: 'Chicago', state: 'IL' }))
+      .toBe(false); // metro tag must match, not just exist
+  });
+
   it('beds/baths/sqft filters', () => {
     expect(matchesSavedSearch(L, { min_bedrooms: 3 })).toBe(true);
     expect(matchesSavedSearch(L, { min_bedrooms: 4 })).toBe(false);
@@ -106,6 +116,23 @@ describe('ReoTracker panel', () => {
     const stamp = window.localStorage.getItem('home-finder:last-visit');
     expect(new Date(stamp).getTime()).toBeGreaterThan(
       new Date(twoDaysAgo).getTime());
+  });
+
+  it('flags arrivals older than the 7-day is_new window after a long absence', async () => {
+    // Back after 3 weeks: the listing arrived 11 days ago — is_new is
+    // false, but it postdates the last visit, so it still counts.
+    const listing = {
+      ...LISTING,
+      is_new: false,
+      first_seen: new Date(Date.now() - 11 * 86400_000).toISOString(),
+    };
+    const threeWeeksAgo = new Date(Date.now() - 21 * 86400_000).toISOString();
+    window.localStorage.setItem('home-finder:last-visit', threeWeeksAgo);
+    mockInventoryResponse(INVENTORY([listing]));
+    render(<ReoTracker />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/🔔 1 since your last visit/)).toBeInTheDocument());
   });
 
   it('no since-visit callout on first-ever visit', async () => {

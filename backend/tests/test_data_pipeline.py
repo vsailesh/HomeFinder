@@ -79,8 +79,6 @@ class TestZillowOutageCache:
     @pytest.fixture(autouse=True)
     def clean_cache(self, monkeypatch):
         monkeypatch.setattr(dp, "_zillow_cache", type(dp._zillow_cache)())
-        monkeypatch.setattr(dp, "_last_source",
-                            {"tier": None, "cached_at": None})
 
     def _specs(self, city="Chicago", **kw):
         return SearchSpecs(city=city, state="IL", **kw)
@@ -95,9 +93,9 @@ class TestZillowOutageCache:
             monkeypatch,
             lambda specs, limit=50: props,
             lambda city, state, zip_code=None: [])
-        out = dp.fetch_live_listings(self._specs())
+        out, info = dp.fetch_live_listings(self._specs())
         assert out == props
-        assert dp.last_source_info()["tier"] == "zillow"
+        assert info == {"tier": "zillow", "cached_at": None}
         assert dp._zillow_cache  # remembered
 
     def test_outage_serves_stale_before_homesteps(self, monkeypatch):
@@ -113,14 +111,43 @@ class TestZillowOutageCache:
             monkeypatch, rapid,
             lambda city, state, zip_code=None:
                 calls.__setitem__("reo", calls["reo"] + 1) or reo)
-        first = dp.fetch_live_listings(self._specs())
+        first, info1 = dp.fetch_live_listings(self._specs())
         assert first == props
-        second = dp.fetch_live_listings(self._specs())  # outage
+        assert info1["tier"] == "zillow"
+        second, info2 = dp.fetch_live_listings(self._specs())  # outage
         assert second == props  # stale cache, not REO
         assert calls["reo"] == 0
-        info = dp.last_source_info()
+        assert info2["tier"] == "zillow-cache"
+        assert info2["cached_at"] is not None
+
+    def test_stale_cache_refiltered_against_current_specs(self, monkeypatch):
+        """The cache holds whatever the POPULATING search fetched — a
+        later search with different filters must not see those listings
+        as matches."""
+        cheap = make_property("z1", list_price=200000,
+                              source="rapidapi-zillow")
+        pricey = make_property("z2", list_price=800000,
+                               source="rapidapi-zillow")
+        calls = {"rapid": 0}
+
+        def rapid(specs, limit=50):
+            calls["rapid"] += 1
+            return [cheap, pricey] if calls["rapid"] == 1 else []
+
+        self._with_sources(
+            monkeypatch, rapid,
+            lambda city, state, zip_code=None: [])
+        dp.fetch_live_listings(self._specs())  # populate unfiltered
+        # Outage + min_price filter: only the matching cached listing
+        # survives, labeled as cache tier.
+        out, info = dp.fetch_live_listings(self._specs(min_price=500000))
+        assert [p.id for p in out] == ["z2"]
         assert info["tier"] == "zillow-cache"
-        assert info["cached_at"] is not None
+        # Outage + a filter nothing satisfies: fall through, don't
+        # serve non-matching stale listings.
+        out2, info2 = dp.fetch_live_listings(self._specs(min_price=900000))
+        assert all(p.source == "mock-generator" for p in out2)
+        assert info2["tier"] == "mock"
 
     def test_expired_cache_falls_through(self, monkeypatch):
         props = [make_property("z1", source="rapidapi-zillow")]
@@ -137,9 +164,19 @@ class TestZillowOutageCache:
         key = dp._cache_key(self._specs())
         ts = dp._zillow_cache[key][1]
         dp._zillow_cache[key] = (props, ts - dp._STALE_GRACE_SECONDS - 1)
-        out = dp.fetch_live_listings(self._specs())  # outage + expired
+        out, info = dp.fetch_live_listings(self._specs())  # outage + expired
         assert all(p.source == "mock-generator" for p in out)
-        assert dp.last_source_info()["tier"] == "mock"
+        assert info["tier"] == "mock"
+
+    def test_env_int_tolerates_bad_values(self, monkeypatch):
+        # Import-time env parse must never crash boot on placeholders.
+        assert dp._env_int("NO_SUCH_VAR_X", 604800) == 604800
+        monkeypatch.setenv("NO_SUCH_VAR_X", "")
+        assert dp._env_int("NO_SUCH_VAR_X", 604800) == 604800
+        monkeypatch.setenv("NO_SUCH_VAR_X", "7d")
+        assert dp._env_int("NO_SUCH_VAR_X", 604800) == 604800
+        monkeypatch.setenv("NO_SUCH_VAR_X", " 90 ")
+        assert dp._env_int("NO_SUCH_VAR_X", 604800) == 90
 
     def test_cache_key_market_scoped(self):
         a = dp._cache_key(SearchSpecs(city="Chicago", state="IL"))
@@ -187,8 +224,9 @@ class TestSourceFallbackChain:
             source="homesteps-freddie-mac")
         monkeypatch.setattr(dp, "fetch_homesteps_properties",
                             lambda c, s, z=None: [reo])
-        props = dp.fetch_live_listings(self._specs())
+        props, info = dp.fetch_live_listings(self._specs())
         assert [p.source for p in props] == ["homesteps-freddie-mac"]
+        assert info["tier"] == "homesteps"
 
     def test_mock_when_homesteps_empty(self, monkeypatch):
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
@@ -196,8 +234,9 @@ class TestSourceFallbackChain:
                             lambda specs, limit=50: [])
         monkeypatch.setattr(dp, "fetch_homesteps_properties",
                             lambda c, s, z=None: [])
-        props = dp.fetch_live_listings(self._specs())
+        props, info = dp.fetch_live_listings(self._specs())
         assert props and props[0].source == "mock-generator"
+        assert info["tier"] == "mock"
 
     def test_rapidapi_beats_homesteps(self, monkeypatch):
         monkeypatch.setenv("RAPIDAPI_KEY", "k" * 50)
@@ -211,8 +250,9 @@ class TestSourceFallbackChain:
         called = []
         monkeypatch.setattr(dp, "fetch_homesteps_properties",
                             lambda c, s, z=None: called.append(1) or [])
-        props = dp.fetch_live_listings(self._specs())
+        props, info = dp.fetch_live_listings(self._specs())
         assert props[0].source == "RapidAPI-ZillowLive"
+        assert info["tier"] == "zillow"
         assert not called  # HomeSteps never queried
 
 

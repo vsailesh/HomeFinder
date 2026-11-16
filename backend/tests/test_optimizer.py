@@ -1,4 +1,6 @@
 """Optimizer tests — scoring bounds, grades, robustness, rate wiring."""
+import random
+
 import pytest
 from models import Property, PropertyType, PropertyCondition, SearchSpecs
 from optimizer import (
@@ -108,7 +110,8 @@ class TestOptimizeSearch:
         bad = make_property(id="bad", sqft=0)  # valuation rejects sqft<=0
         monkeypatch.setattr(
             "optimizer.fetch_live_listings",
-            lambda specs, count=60: good + [bad],
+            lambda specs, count=60: (good + [bad],
+                                     {"tier": "mock", "cached_at": None}),
         )
         result = optimize_search(SearchSpecs(city="Bethesda", state="MD"))
         assert result["total_results"] == len(good)
@@ -125,7 +128,8 @@ class TestPagination:
             SearchSpecs(city="Columbia", state="MD"), count=60)
         assert len(props) == 60
         monkeypatch.setattr(
-            "optimizer.fetch_live_listings", lambda specs, count=60: props)
+            "optimizer.fetch_live_listings", lambda specs, count=60:
+                (props, {"tier": "mock", "cached_at": None}))
         return props
 
     def test_no_page_returns_everything(self, fixed_props):
@@ -198,6 +202,10 @@ class TestAppreciation:
 
 class TestRentCashflow:
     def test_rent_and_cashflow_wired(self, monkeypatch):
+        # Mock generation is random — seed so this value-dependent
+        # assertion (P&I > metro rent) doesn't depend on how many draws
+        # earlier tests consumed.
+        random.seed(20261113)
         monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
         monkeypatch.setattr(
             "optimizer.get_metro_baseline",
@@ -374,6 +382,15 @@ class TestCarryEstimate:
         assert deal.monthly_carry_estimate == round(
             payment + 300000 * 0.011 / 12 + insurance, 2)
 
+    def test_zero_published_tax_is_honored(self, monkeypatch):
+        # $0 is a published value (HomeSteps REO), not "missing" — the
+        # 1.1% assumption must not kick in.
+        prop, deal = self._deal(monkeypatch, list_price=300000,
+                                annual_tax=0.0)
+        payment = deal.monthly_payment_estimate
+        insurance = 300000 * 0.0035 / 12
+        assert deal.monthly_carry_estimate == round(payment + insurance, 2)
+
     def test_net_cashflow_after_carry(self, monkeypatch):
         prop, deal = self._deal(monkeypatch, list_price=300000,
                                 annual_tax=3600)
@@ -445,7 +462,8 @@ class TestCashflowSort:
         props = generate_mock_listings(
             SearchSpecs(city="Columbia", state="MD"), count=20)
         monkeypatch.setattr(
-            "optimizer.fetch_live_listings", lambda specs, count=60: props)
+            "optimizer.fetch_live_listings", lambda specs, count=60:
+                (props, {"tier": "mock", "cached_at": None}))
         # Same rent for every listing: net cashflow then falls with
         # price (payment + tax + insurance all rise) -> price-asc order.
         monkeypatch.setattr(

@@ -24,16 +24,19 @@ function relativeTime(iso) {
  * Does a tracker listing satisfy a saved search's criteria? Only the
  * fields the tracker carries are enforced (location, price, beds,
  * baths, sqft) — rent-coverage/sort criteria don't apply to raw REO
- * inventory. City matches equal-or-contains either way so a metro
- * search ("Baltimore") still matches its suburbs ("Gwynn Oak") when
- * the suburb name contains it, and state is the real gate.
+ * inventory. A saved metro ("Baltimore") matches listings in its
+ * suburbs ("Gwynn Oak") via the tracker's metro tag — the metro each
+ * listing was swept under — with city equal-or-contains as fallback.
+ * State is the real gate.
  */
 export function matchesSavedSearch(l, p = {}) {
   if (p.state && (l.state || '').toUpperCase() !== String(p.state).toUpperCase()) return false;
   if (p.city) {
     const want = String(p.city).toLowerCase();
     const have = (l.city || '').toLowerCase();
-    if (have !== want && !have.includes(want) && !want.includes(have)) return false;
+    const metro = (l.metro || '').toLowerCase();
+    const cityHit = have === want || have.includes(want) || want.includes(have);
+    if (!cityHit && metro !== want) return false;
   }
   if (p.zip_code && l.zip_code && String(l.zip_code) !== String(p.zip_code)) return false;
   if (p.max_price != null && l.list_price > Number(p.max_price)) return false;
@@ -87,10 +90,16 @@ export default function ReoTracker({ onLoadSearch }) {
           const prev = window.localStorage.getItem(VISIT_KEY);
           if (prev) {
             const prevTs = new Date(prev);
+            // Timestamp-driven, not flag-driven: the is_new/price_cut
+            // flags age out after 7 days, but a visitor back after a
+            // month still wants everything that moved since their
+            // visit. Cuts only (prev_price above current) — price
+            // increases aren't "fresh".
             const fresh = (json.listings || []).filter(l =>
-              (l.is_new && l.first_seen && new Date(l.first_seen) > prevTs) ||
-              (l.price_cut && l.last_price_change &&
-                new Date(l.last_price_change) > prevTs));
+              (l.first_seen && new Date(l.first_seen) > prevTs) ||
+              (l.last_price_change &&
+                new Date(l.last_price_change) > prevTs &&
+                l.prev_price != null && l.list_price < l.prev_price));
             setFreshIds(new Set(fresh.map(l => l.id)));
           }
           window.localStorage.setItem(VISIT_KEY, new Date().toISOString());

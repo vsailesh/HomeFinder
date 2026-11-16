@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS listings (
   prev_price REAL,
   last_price_change TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
-  miss_count INTEGER NOT NULL DEFAULT 0
+  miss_count INTEGER NOT NULL DEFAULT 0,
+  metro TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_listings_active ON listings(is_active);
 CREATE INDEX IF NOT EXISTS idx_listings_city ON listings(city);
@@ -128,6 +129,10 @@ def _age_seconds(iso: Optional[str]) -> Optional[float]:
 def _ensure_schema() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        # Older DBs predate the metro column — migrate in place.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
+        if "metro" not in cols:
+            conn.execute("ALTER TABLE listings ADD COLUMN metro TEXT")
 
 
 def last_sweep_info() -> Optional[Dict]:
@@ -182,8 +187,11 @@ def _sweep_locked(force: bool, fetcher: Optional[Callable]) -> Dict:
             "INSERT INTO sweeps (started_at, status) VALUES (?, 'running')",
             (started,))
         sweep_id = cur.lastrowid
+        prior_listings = conn.execute(
+            "SELECT COUNT(*) FROM listings").fetchone()[0]
 
     seen: Dict[str, Property] = {}
+    metro_of: Dict[str, str] = {}
     per_metro = {}
     try:
         for i, (city, meta) in enumerate(MARKET_DATA.items()):
@@ -195,9 +203,10 @@ def _sweep_locked(force: bool, fetcher: Optional[Callable]) -> Dict:
             per_metro[city] = len(props)
             for prop in props:
                 seen[prop.id] = prop  # dedupe across metros
+                metro_of[prop.id] = city
             logger.info("REO sweep %s: %d listings", city, len(props))
 
-        counts = _upsert_seen(seen)
+        counts = _upsert_seen(seen, metro_of)
         deactivated = _deactivate_absent(seen_ids=list(seen.keys()))
 
         finished = _now()
@@ -224,7 +233,10 @@ def _sweep_locked(force: bool, fetcher: Optional[Callable]) -> Dict:
                    "new_listing_ids": counts["new_ids"],
                    "price_cut_listing_ids": counts["price_cut_ids"],
                    "per_metro": per_metro}
-        _maybe_alert(summary)  # optional webhook; never raises
+        # Rebuild sweeps (empty DB: cold start on ephemeral disks) flag
+        # the whole inventory as new — noise, not signal. Suppress the
+        # webhook for them; the summary still reports the counts.
+        _maybe_alert(summary, rebuilt=prior_listings == 0)
         return summary
     except Exception as e:
         logger.exception("REO sweep failed")
@@ -236,19 +248,26 @@ def _sweep_locked(force: bool, fetcher: Optional[Callable]) -> Dict:
         raise
 
 
-def _upsert_seen(seen: Dict[str, Property]) -> Dict:
+def _upsert_seen(seen: Dict[str, Property],
+                 metro_of: Optional[Dict[str, str]] = None) -> Dict:
     """Insert new listings / refresh sightings / record price changes.
+
+    metro_of maps listing id → the MARKET_DATA metro whose sweep found
+    it (listings carry their own suburb city — "Gwynn Oak" — which the
+    served metro key "Baltimore" must stay attached to for matching).
 
     Also returns the ids of listings new this sweep and of price cuts
     (drops only — increases are recorded but not flagged), for the
     alert webhook and the sweep summary.
     """
+    metro_of = metro_of or {}
     now = _now()
     new_count = price_changes = 0
     new_ids: List[str] = []
     price_cut_ids: List[str] = []
     with _connect() as conn:
         for prop in seen.values():
+            metro = metro_of.get(prop.id)
             row = conn.execute(
                 "SELECT list_price, first_seen FROM listings WHERE id=?",
                 (prop.id,)).fetchone()
@@ -258,13 +277,13 @@ def _upsert_seen(seen: Dict[str, Property]) -> Dict:
                        zip_code, latitude, longitude, list_price, bedrooms,
                        bathrooms, sqft, property_type, year_built, url,
                        image_url, first_seen, last_seen, is_active,
-                       miss_count)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0)""",
+                       miss_count, metro)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?)""",
                     (prop.id, prop.address, prop.city, prop.state,
                      prop.zip_code, prop.latitude, prop.longitude,
                      prop.list_price, prop.bedrooms, prop.bathrooms,
                      prop.sqft, prop.property_type.value, prop.year_built,
-                     prop.url, prop.image_url, now, now))
+                     prop.url, prop.image_url, now, now, metro))
                 conn.execute(
                     "INSERT OR IGNORE INTO price_history "
                     "(listing_id, price, seen_at) VALUES (?,?,?)",
@@ -278,7 +297,7 @@ def _upsert_seen(seen: Dict[str, Property]) -> Dict:
                        zip_code=?, latitude=?, longitude=?, list_price=?,
                        bedrooms=?, bathrooms=?, sqft=?, property_type=?,
                        year_built=?, url=?, image_url=?, last_seen=?,
-                       is_active=1, miss_count=0,
+                       is_active=1, miss_count=0, metro=?,
                        prev_price=CASE WHEN ? THEN ? ELSE prev_price END,
                        last_price_change=CASE WHEN ? THEN ?
                                           ELSE last_price_change END
@@ -287,7 +306,7 @@ def _upsert_seen(seen: Dict[str, Property]) -> Dict:
                      prop.latitude, prop.longitude, prop.list_price,
                      prop.bedrooms, prop.bathrooms, prop.sqft,
                      prop.property_type.value, prop.year_built, prop.url,
-                     prop.image_url, now,
+                     prop.image_url, now, metro,
                      price_changed, row["list_price"],
                      price_changed, now, prop.id))
                 if price_changed:
@@ -343,11 +362,16 @@ def _alert_rows(ids: List[str]) -> List[Dict]:
     return out
 
 
-def _maybe_alert(summary: Dict) -> None:
+def _maybe_alert(summary: Dict, rebuilt: bool = False) -> None:
     """POST sweep highlights to ALERT_WEBHOOK_URL when configured.
 
     Zero-config when the env var is unset (the common case) and never
-    raises — an alerting failure must not fail the sweep.
+    raises — an alerting failure (including payload construction, which
+    re-reads the DB) must not fail the sweep.
+
+    Rebuild sweeps — the first sweep on a fresh/empty DB, e.g. every
+    cold start on ephemeral disks — re-insert the whole inventory as
+    "new"; that's noise, not signal, so they never post.
     """
     url = os.environ.get("ALERT_WEBHOOK_URL", "").strip()
     if not url:
@@ -355,18 +379,24 @@ def _maybe_alert(summary: Dict) -> None:
     if not (summary.get("new_listing_ids")
             or summary.get("price_cut_listing_ids")):
         return  # nothing noteworthy this sweep
-    payload = {
-        "swept_at": summary.get("finished_at"),
-        "counts": {
-            "listings_seen": summary.get("listings_seen"),
-            "new": summary.get("new_listings"),
-            "price_changes": summary.get("price_changes"),
-            "active_now": summary.get("active_now"),
-        },
-        "new": _alert_rows(summary.get("new_listing_ids") or []),
-        "price_cuts": _alert_rows(summary.get("price_cut_listing_ids") or []),
-    }
+    if rebuilt:
+        logger.info("Suppressing REO alert webhook: rebuild sweep "
+                    "(empty history DB) flags all %d listings as new.",
+                    len(summary.get("new_listing_ids") or []))
+        return
     try:
+        payload = {
+            "swept_at": summary.get("finished_at"),
+            "counts": {
+                "listings_seen": summary.get("listings_seen"),
+                "new": summary.get("new_listings"),
+                "price_changes": summary.get("price_changes"),
+                "active_now": summary.get("active_now"),
+            },
+            "new": _alert_rows(summary.get("new_listing_ids") or []),
+            "price_cuts": _alert_rows(
+                summary.get("price_cut_listing_ids") or []),
+        }
         resp = requests.post(url, json=payload, timeout=10)
         if resp.status_code >= 400:
             logger.warning("REO alert webhook returned HTTP %d",
@@ -446,6 +476,9 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
         listings.append({
             "id": r["id"], "address": r["address"], "city": r["city"],
             "state": r["state"], "zip_code": r["zip_code"],
+            # MARKET_DATA metro whose sweep found this listing — the
+            # city above is the listing's own (often a suburb).
+            "metro": r["metro"],
             "latitude": r["latitude"], "longitude": r["longitude"],
             "list_price": r["list_price"], "prev_price": r["prev_price"],
             "last_price_change": r["last_price_change"],

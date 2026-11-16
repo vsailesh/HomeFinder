@@ -79,8 +79,11 @@ def build_projection(list_price: float,
         rent = baseline.get("typical_rent")
         rent_source = "zillow-zori-metro" if rent is not None else None
 
-    base_tax = annual_tax or list_price * DEFAULT_TAX_RATE
-    hoa = hoa_fee or 0.0
+    # A published $0 tax is real (HomeSteps bank-owned deals) — only
+    # a missing value falls back to the rate assumption.
+    base_tax = (annual_tax if annual_tax is not None
+                else list_price * DEFAULT_TAX_RATE)
+    hoa = hoa_fee if hoa_fee is not None else 0.0
 
     value0 = estimated_value or list_price
 
