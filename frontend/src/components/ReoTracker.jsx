@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import PriceSpark from './PriceSpark';
 import { formatCurrency } from '../lib/format';
 
@@ -170,12 +171,9 @@ export default function ReoTracker({ onLoadSearch }) {
             </div>
           )}
           {flagged.map(l => (
-            <a
+            <div
               key={l.id}
               className={`reo-tracker-row${freshIds?.has(l.id) ? ' reo-row-fresh' : ''}`}
-              href={l.url || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <span className="reo-tracker-tags">
                 {l.is_new && <span className="reo-tag-new">NEW</span>}
@@ -185,9 +183,14 @@ export default function ReoTracker({ onLoadSearch }) {
                   </span>
                 )}
               </span>
-              <span className="reo-tracker-addr">
+              <a
+                className="reo-tracker-addr"
+                href={l.url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {l.address}, {l.city}, {l.state}
-              </span>
+              </a>
               <span className="reo-tracker-price">
                 {l.price_cut && l.prev_price != null && (
                   <s className="reo-prev-price">{formatCurrency(l.prev_price)}</s>
@@ -198,7 +201,10 @@ export default function ReoTracker({ onLoadSearch }) {
                 points={l.price_history}
                 title={`Asked ${(l.price_history || []).map(p => formatCurrency(p.price)).join(' → ')}`}
               />
-            </a>
+              <Link className="reo-analyze" href={`/listing/${l.id}`}>
+                Analyze ▸
+              </Link>
+            </div>
           ))}
         </div>
       )}

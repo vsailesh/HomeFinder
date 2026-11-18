@@ -96,6 +96,12 @@ describe('ReoTracker panel', () => {
     expect(spark.getAttribute('class')).toContain('price-spark-down');
     expect(spark.querySelector('title').textContent)
       .toContain('$210,000');
+    // Row links to its permalink analysis page; the address stays an
+    // external HomeSteps link.
+    expect(screen.getByRole('link', { name: /Analyze/ })
+      .getAttribute('href')).toBe('/listing/homesteps-x');
+    expect(screen.getByRole('link', { name: /1 Main St, Chicago/ })
+      .getAttribute('href')).toBe('https://example.com/x');
   });
 
   it('shows the saved-search match count and re-runs the search on click', async () => {

@@ -476,3 +476,53 @@ def test_sweep_records_listing_metro():
     assert inv["metro"] == "Chicago"
     assert inv["city"] == "Evanston"
 
+
+
+# --- by-id listing detail ----------------------------------------------
+
+def test_get_listing_detail_survives_inactivation():
+    _sweep(_prop())
+    detail = rt.get_listing_detail("homesteps-x")
+    assert detail["is_active"] is True
+    assert detail["source"] == "homesteps-freddie-mac"
+    assert detail["price_history"][0]["price"] == 199000.0
+    # Gone from the source: deactivation takes two consecutive
+    # missed sweeps (_DEACTIVATE_AFTER_MISSES).
+    rt.run_sweep(force=True, fetcher=lambda city, state: [])
+    rt.run_sweep(force=True, fetcher=lambda city, state: [])
+    detail = rt.get_listing_detail("homesteps-x")
+    assert detail["is_active"] is False
+    assert detail["list_price"] == 199000.0
+
+
+def test_get_listing_detail_unknown_id_is_none():
+    assert rt.get_listing_detail("never-swept") is None
+
+
+def test_listing_detail_endpoint_serves_scored_deal(client):
+    _sweep(_prop())
+    r = client.get("/api/reo/listing/homesteps-x")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["listing"]["id"] == "homesteps-x"
+    assert body["listing"]["price_history"]
+    deal = body["deal"]
+    assert deal["property"]["id"] == "homesteps-x"
+    assert isinstance(deal["deal_score"], (int, float))
+    assert deal["valuation"]["estimated_value"] > 0
+
+
+def test_listing_detail_endpoint_404_and_valuation_degrades(client, monkeypatch):
+    assert client.get("/api/reo/listing/ghost").status_code == 404
+
+    # Valuation blowup still serves the tracker record alone.
+    _sweep(_prop())
+
+    def boom(prop):
+        raise RuntimeError("engine down")
+
+    monkeypatch.setattr(main_module, "valuate_property", boom)
+    r = client.get("/api/reo/listing/homesteps-x")
+    assert r.status_code == 200
+    assert r.json()["deal"] is None
+    assert r.json()["listing"]["id"] == "homesteps-x"

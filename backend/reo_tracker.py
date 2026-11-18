@@ -465,6 +465,48 @@ def get_tracker_state(ids: List[str], days: int = 7) -> Dict[str, Dict]:
     return out
 
 
+def _listing_dict(r, flags: Dict, history: List[Dict]) -> Dict:
+    """A listings-table row as the API's listing shape (used by the
+    inventory snapshot and the by-id detail endpoint)."""
+    return {
+        "id": r["id"], "address": r["address"], "city": r["city"],
+        "state": r["state"], "zip_code": r["zip_code"],
+        # MARKET_DATA metro whose sweep found this listing — the
+        # city above is the listing's own (often a suburb).
+        "metro": r["metro"],
+        "latitude": r["latitude"], "longitude": r["longitude"],
+        "list_price": r["list_price"], "prev_price": r["prev_price"],
+        "last_price_change": r["last_price_change"],
+        "price_change_pct": _pct(r["list_price"], r["prev_price"]),
+        "first_seen": r["first_seen"], "last_seen": r["last_seen"],
+        "is_active": bool(r["is_active"]),
+        "is_new": flags["is_new"],
+        "price_cut": flags["price_cut"],
+        "price_history": history,
+        "bedrooms": r["bedrooms"], "bathrooms": r["bathrooms"],
+        "sqft": r["sqft"], "sqft_estimated": True,
+        "property_type": r["property_type"],
+        "year_built": r["year_built"], "url": r["url"],
+        "image_url": r["image_url"],
+        "source": "homesteps-freddie-mac",
+    }
+
+
+def get_listing_detail(listing_id: str, days: int = 7) -> Optional[Dict]:
+    """One tracked listing by id — active or long gone — with flags
+    and its full price history. Durable by-id source: unlike the
+    in-memory property registry, it survives restarts and deploys.
+    None when the id was never swept."""
+    _ensure_schema()
+    with _connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        if r is None:
+            return None
+        history = _price_histories(conn, [r["id"]]).get(r["id"], [])
+    return _listing_dict(r, _flags(r, days), history)
+
+
 def get_inventory(city: Optional[str] = None, days: int = 7,
                   include_inactive: bool = False) -> Dict:
     """Report-style snapshot of tracked REO inventory.
@@ -498,28 +540,8 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
         flags = _flags(r, days)
         if r["is_active"]:
             metros.add(f'{r["city"]}, {r["state"]}')
-        listings.append({
-            "id": r["id"], "address": r["address"], "city": r["city"],
-            "state": r["state"], "zip_code": r["zip_code"],
-            # MARKET_DATA metro whose sweep found this listing — the
-            # city above is the listing's own (often a suburb).
-            "metro": r["metro"],
-            "latitude": r["latitude"], "longitude": r["longitude"],
-            "list_price": r["list_price"], "prev_price": r["prev_price"],
-            "last_price_change": r["last_price_change"],
-            "price_change_pct": _pct(r["list_price"], r["prev_price"]),
-            "first_seen": r["first_seen"], "last_seen": r["last_seen"],
-            "is_active": bool(r["is_active"]),
-            "is_new": flags["is_new"],
-            "price_cut": flags["price_cut"],
-            "price_history": histories.get(r["id"], []),
-            "bedrooms": r["bedrooms"], "bathrooms": r["bathrooms"],
-            "sqft": r["sqft"], "sqft_estimated": True,
-            "property_type": r["property_type"],
-            "year_built": r["year_built"], "url": r["url"],
-            "image_url": r["image_url"],
-            "source": "homesteps-freddie-mac",
-        })
+        listings.append(_listing_dict(
+            r, flags, histories.get(r["id"], [])))
 
     active = [l for l in listings if l["is_active"]]
     # New/price-cut first, then freshest sighting, then cheapest —

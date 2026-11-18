@@ -13,9 +13,9 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
-from models import (SearchSpecs, PropertyType, LoanQuoteRequest,
+from models import (Property, SearchSpecs, PropertyType, LoanQuoteRequest,
                     LoanQuoteResponse, ProjectionRequest)
-from optimizer import optimize_search
+from optimizer import optimize_search, score_deal
 from data_pipeline import get_all_cities, get_property_by_id
 from valuation_engine import valuate_property
 from loan_engine import get_market_base_rate, quote_loan
@@ -128,6 +128,52 @@ async def reo_inventory(city: Optional[str] = None,
     listings with new-this-window / price-cut flags and history."""
     return reo_tracker.get_inventory(city=city, days=days,
                                      include_inactive=include_inactive)
+
+
+@app.get("/api/reo/listing/{listing_id}")
+def reo_listing_detail(listing_id: str):
+    """One tracked REO listing by id: tracker record, full price
+    history, and a scored deal (same valuation/scoring as search).
+    SQLite-backed, so it survives deploys and serves listings the
+    in-memory registry never saw — active or long gone. Valuation
+    failure degrades to the tracker record alone (deal: null)."""
+    listing = reo_tracker.get_listing_detail(listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="Unknown listing id")
+
+    deal = None
+    try:
+        prop = Property(
+            id=listing["id"], address=listing["address"],
+            city=listing["city"], state=listing["state"],
+            zip_code=listing["zip_code"],
+            latitude=listing["latitude"], longitude=listing["longitude"],
+            list_price=listing["list_price"],
+            property_type=PropertyType(
+                listing["property_type"] or "single_family"),
+            bedrooms=listing["bedrooms"] or 0,
+            bathrooms=listing["bathrooms"] or 0.0,
+            sqft=listing["sqft"] or 0,
+            sqft_estimated=True,
+            year_built=listing["year_built"],
+            url=listing["url"], image_url=listing["image_url"],
+            source="homesteps-freddie-mac",
+        )
+        baseline = get_metro_baseline(prop.city, prop.state) or {}
+        deal = score_deal(
+            prop,
+            valuate_property(prop),
+            appreciation=baseline.get("appreciation_1y"),
+            metro_rent=baseline.get("typical_rent"),
+            market_heat={k: baseline[k] for k in (
+                "pct_listings_price_cut", "median_days_to_pending",
+                "sale_to_list_ratio") if k in baseline},
+        ).model_dump()
+    except Exception:
+        logger.exception("Listing %s valuation failed — serving the "
+                         "tracker record only", listing_id)
+
+    return {"listing": listing, "deal": deal}
 
 
 @app.get("/api/search")
