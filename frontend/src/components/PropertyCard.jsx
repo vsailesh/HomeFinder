@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ProjectionChart } from './Charts';
+import PriceSpark from './PriceSpark';
 import { formatCurrency } from '../lib/format';
 
 function gradeClass(grade) {
@@ -114,6 +115,12 @@ export default function PropertyCard({
             >
               PRICE CUT {reo_tracker.price_change_pct}%
             </span>
+          )}
+          {reo_tracker?.price_history?.length > 1 && (
+            <PriceSpark
+              points={reo_tracker.price_history}
+              title={`Asked ${reo_tracker.price_history.map(p => formatCurrency(p.price)).join(' → ')}`}
+            />
           )}
           {onToggleCompare && (
             <button

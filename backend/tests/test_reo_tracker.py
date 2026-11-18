@@ -77,6 +77,30 @@ def test_price_cut_detected():
     assert listing["price_change_pct"] == -10.1
 
 
+def test_price_history_surfaced():
+    """Every sweep records prices — inventory + tracker enrichment now
+    carry the series (oldest → newest) for the sparkline."""
+    _sweep(_prop(price=199000.0))
+    _sweep(_prop(price=189000.0))
+    _sweep(_prop(price=179000.0))
+    listing = rt.get_inventory()["listings"][0]
+    assert [p["price"] for p in listing["price_history"]] == [
+        199000.0, 189000.0, 179000.0]
+    state = rt.get_tracker_state(["homesteps-x"])
+    assert [p["price"] for p in state["homesteps-x"]["price_history"]] == [
+        199000.0, 189000.0, 179000.0]
+
+
+def test_price_history_capped_at_12_points():
+    prices = [200000.0 - i * 1000 for i in range(15)]
+    for price in prices:
+        _sweep(_prop(price=float(price)))
+    listing = rt.get_inventory()["listings"][0]
+    assert len(listing["price_history"]) == 12
+    assert listing["price_history"][0]["price"] == prices[3]  # oldest kept
+    assert listing["price_history"][-1]["price"] == prices[-1]
+
+
 def test_price_increase_recorded_not_flagged():
     _sweep(_prop(price=199000.0))
     _sweep(_prop(price=219000.0))

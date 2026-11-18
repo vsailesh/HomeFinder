@@ -8,6 +8,10 @@ const LISTING = {
   sqft: 1400, is_new: true, price_cut: false,
   first_seen: new Date(Date.now() - 3600_000).toISOString(),
   last_price_change: null, url: 'https://example.com/x',
+  price_history: [
+    { price: 210000, seen_at: '2026-11-01T00:00:00Z' },
+    { price: 195000, seen_at: '2026-11-10T00:00:00Z' },
+  ],
 };
 
 const INVENTORY = (listings, summaryOverrides = {}) => ({
@@ -78,6 +82,20 @@ describe('ReoTracker panel', () => {
     const { container } = render(<ReoTracker />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(container.firstChild).toBeNull();
+  });
+
+  it('shows a price-trend sparkline per flagged row', async () => {
+    mockInventoryResponse(INVENTORY([LISTING]));
+    render(<ReoTracker />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /REO tracker/ }))
+        .toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Freddie Mac REO tracker/ }));
+    const spark = document.querySelector('.price-spark');
+    expect(spark).toBeTruthy();
+    expect(spark.getAttribute('class')).toContain('price-spark-down');
+    expect(spark.querySelector('title').textContent)
+      .toContain('$210,000');
   });
 
   it('shows the saved-search match count and re-runs the search on click', async () => {

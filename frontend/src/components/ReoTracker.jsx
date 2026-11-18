@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import PriceSpark from './PriceSpark';
 import { formatCurrency } from '../lib/format';
 
 const SAVED_KEY = 'home-finder:saved-searches';
@@ -193,6 +194,10 @@ export default function ReoTracker({ onLoadSearch }) {
                 )}
                 {formatCurrency(l.list_price)}
               </span>
+              <PriceSpark
+                points={l.price_history}
+                title={`Asked ${(l.price_history || []).map(p => formatCurrency(p.price)).join(' → ')}`}
+              />
             </a>
           ))}
         </div>

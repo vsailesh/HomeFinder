@@ -14,6 +14,8 @@ Listing sources cascade in order: RapidAPI Zillow (full inventory, needs quota) 
 
 **REO tracker** — a daily sweep (GitHub Actions cron → `POST /api/reo/sweep`, plus a freshness-gated sweep on backend startup) records every HomeSteps listing ever sighted in SQLite (`REO_DB_PATH`, default `backend/reo_history.db`), so REO inventory that appeared and vanished between searches isn't lost. `GET /api/reo/inventory` reports active listings with new-this-week / price-cut flags; the frontend shows a tracker panel under the search form. Sweep history lives on the host disk — on Render's free tier it resets on deploy and rebuilds on the next sweep.
 
+**REO price history** — every sweep records each listing's asks; the inventory API now carries `price_history` per listing (last 12 points), and the tracker panel + property cards render it as a sparkline showing how the bank has been stepping the price down. Hover the sparkline for the full ask ladder.
+
 **Compare tray** — shortlist up to 4 deals with the ± Compare chip on any card; the tray under the search form lines them up side-by-side (score, price vs value, rent, P&I, full carry, net cashflow, rent coverage, $/sqft, 5-yr ROI, REO badges). Shortlist persists in the browser (localStorage), surviving reloads and pagination.
 
 **10-year hold projection** — every card has a lazy "10-Year Hold Projection" toggle: rent vs full carry year by year, property value along the metro's ZHVI trend (3.5%/yr national fallback), loan amortization, equity build, cumulative cashflow, and net position at exit after 6% selling costs (`POST /api/property/projection`).

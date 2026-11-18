@@ -417,6 +417,27 @@ def _flags(r, days: int) -> Dict:
     }
 
 
+_PRICE_POINTS_CAP = 12  # points per listing sent to the UI
+
+
+def _price_histories(conn, ids: List[str]) -> Dict[str, List[Dict]]:
+    """Recent price points per listing id, oldest → newest (batched —
+    one query per 50 ids, not one per listing). Every sweep has been
+    recording these; the sparkline just surfaces the story."""
+    out: Dict[str, List[Dict]] = {}
+    for i in range(0, len(ids), 50):  # SQLite param limit
+        chunk = ids[i:i + 50]
+        rows = conn.execute(
+            f"SELECT listing_id, price, seen_at FROM price_history "
+            f"WHERE listing_id IN ({','.join('?' * len(chunk))}) "
+            f"ORDER BY listing_id, seen_at", chunk).fetchall()
+        for r in rows:
+            out.setdefault(r["listing_id"], []).append(
+                {"price": r["price"], "seen_at": r["seen_at"]})
+    return {id_: points[-_PRICE_POINTS_CAP:]
+            for id_, points in out.items()}
+
+
 def get_tracker_state(ids: List[str], days: int = 7) -> Dict[str, Dict]:
     """Tracker snapshot for specific listing ids — used to enrich
     /api/search results for HomeSteps deals. Unknown ids absent."""
@@ -425,19 +446,22 @@ def get_tracker_state(ids: List[str], days: int = 7) -> Dict[str, Dict]:
     _ensure_schema()
     out = {}
     with _connect() as conn:
+        listings_rows = []
         for i in range(0, len(ids), 50):  # SQLite param limit
             chunk = ids[i:i + 50]
-            rows = conn.execute(
+            listings_rows.extend(conn.execute(
                 f"SELECT * FROM listings WHERE id IN "
-                f"({','.join('?' * len(chunk))})", chunk).fetchall()
-            for r in rows:
-                out[r["id"]] = {
-                    **_flags(r, days),
-                    "first_seen": r["first_seen"],
-                    "last_seen": r["last_seen"],
-                    "prev_price": r["prev_price"],
-                    "price_change_pct": _pct(r["list_price"], r["prev_price"]),
-                }
+                f"({','.join('?' * len(chunk))})", chunk).fetchall())
+        histories = _price_histories(conn, [r["id"] for r in listings_rows])
+        for r in listings_rows:
+            out[r["id"]] = {
+                **_flags(r, days),
+                "first_seen": r["first_seen"],
+                "last_seen": r["last_seen"],
+                "prev_price": r["prev_price"],
+                "price_change_pct": _pct(r["list_price"], r["prev_price"]),
+                "price_history": histories.get(r["id"], []),
+            }
     return out
 
 
@@ -466,6 +490,7 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
         totals = conn.execute(
             "SELECT SUM(is_active) AS active, "
             "SUM(1 - is_active) AS inactive FROM listings").fetchone()
+        histories = _price_histories(conn, [r["id"] for r in rows])
 
     listings = []
     metros = set()
@@ -487,6 +512,7 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
             "is_active": bool(r["is_active"]),
             "is_new": flags["is_new"],
             "price_cut": flags["price_cut"],
+            "price_history": histories.get(r["id"], []),
             "bedrooms": r["bedrooms"], "bathrooms": r["bathrooms"],
             "sqft": r["sqft"], "sqft_estimated": True,
             "property_type": r["property_type"],

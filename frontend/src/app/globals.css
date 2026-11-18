@@ -2576,3 +2576,26 @@ a:hover { text-decoration: underline; }
   border: 1px solid rgba(239, 68, 68, 0.35);
   color: var(--accent-danger, #ef4444);
 }
+
+/* ── REO price sparkline ───────────────────────────────────────── */
+.price-spark {
+  flex: none;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.price-spark path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.price-spark circle {
+  stroke: #fff;
+  stroke-width: 1;
+}
+.price-spark-down path { stroke: var(--accent-danger, #ef4444); }
+.price-spark-down circle { fill: var(--accent-danger, #ef4444); }
+.price-spark-up path { stroke: var(--accent-success, #22c55e); }
+.price-spark-up circle { fill: var(--accent-success, #22c55e); }
+.price-spark-flat path { stroke: #94a3b8; }
+.price-spark-flat circle { fill: #94a3b8; }
