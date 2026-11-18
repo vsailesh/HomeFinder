@@ -16,6 +16,8 @@ Listing sources cascade in order: RapidAPI Zillow (full inventory, needs quota) 
 
 **REO price history** — every sweep records each listing's asks; the inventory API now carries `price_history` per listing (last 12 points), and the tracker panel + property cards render it as a sparkline showing how the bank has been stepping the price down. Hover the sparkline for the full ask ladder.
 
+**Investor heatmap** — metro vs metro at a glance: what the typical home in each served market costs to carry (P&I + tax + insurance at the live rate, 20% down) versus what it rents for, ranked best cashflow first (`GET /api/market/heatmap`). Suburbs collapse into their metro row (Baltimore + Columbia + Annapolis are one row), active REO inventory joins per metro, and clicking a row runs a search there. Metros without a published rent show "—" and sort last.
+
 **Compare tray** — shortlist up to 4 deals with the ± Compare chip on any card; the tray under the search form lines them up side-by-side (score, price vs value, rent, P&I, full carry, net cashflow, rent coverage, $/sqft, 5-yr ROI, REO badges). Shortlist persists in the browser (localStorage), surviving reloads and pagination.
 
 **10-year hold projection** — every card has a lazy "10-Year Hold Projection" toggle: rent vs full carry year by year, property value along the metro's ZHVI trend (3.5%/yr national fallback), loan amortization, equity build, cumulative cashflow, and net position at exit after 6% selling costs (`POST /api/property/projection`).
@@ -63,6 +65,7 @@ npm run dev
 | `POST /api/loan/quote` | Prorated mortgage quote (credit/loan-type/LTV/term adjustments, DTI, lender comparison) |
 | `GET /api/cities` | Supported cities + market $/sqft + metro trend |
 | `GET /api/market/baselines` | Real per-metro baselines from Zillow Research public data (appreciation, typical value, median list, typical rent, market heat). No key needed |
+| `GET /api/market/heatmap` | Per-metro investor comparison: carry vs rent on the typical home at the live rate, cashflow/coverage, active REO count. No key needed |
 | `GET /api/reo/inventory` | Tracked Freddie Mac REO inventory: active listings, new/price-cut flags, sweep history. No key needed |
 | `POST /api/reo/sweep` | Trigger a REO sweep across all metros. Requires `X-Sweep-Token` = `SWEEP_TOKEN` |
 | `GET /api/debug/source` | Diagnoses live-data failures: key presence (masked), RapidAPI reachability, quota/outage verdict |

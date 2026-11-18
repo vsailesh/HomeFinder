@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import SearchForm, { DEFAULT_SPECS, cleanParams } from '../components/SearchForm';
 import SavedSearches from '../components/SavedSearches';
 import ReoTracker from '../components/ReoTracker';
+import MarketHeatmap from '../components/MarketHeatmap';
 import PropertyCard from '../components/PropertyCard';
 import CompareTray from '../components/CompareTray';
 import MortgageCalculator from '../components/MortgageCalculator';
@@ -183,6 +184,9 @@ export default function HomePage() {
 
       {/* REO inventory tracker */}
       <ReoTracker onLoadSearch={handleLoadSaved} />
+
+      {/* Investor heatmap — metro vs metro */}
+      <MarketHeatmap onLoadSearch={handleLoadSaved} />
 
       {/* Compare shortlist */}
       <CompareTray

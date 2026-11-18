@@ -21,6 +21,7 @@ from valuation_engine import valuate_property
 from loan_engine import get_market_base_rate, quote_loan
 from market_baselines import get_baselines_snapshot, get_metro_baseline
 from projection import build_projection
+from heatmap import build_heatmap
 import reo_tracker
 
 logging.basicConfig(
@@ -88,6 +89,15 @@ async def market_baselines():
     """Real per-metro baselines from Zillow Research public data
     (trailing-12mo appreciation, typical value, median list price)."""
     return get_baselines_snapshot()
+
+
+@app.get("/api/market/heatmap")
+def market_heatmap():
+    """Per-metro investor comparison: carry vs rent on the typical
+    home at the live rate. Sync def on purpose — a cold run fetches
+    the Zillow Research CSVs (multi-MB) and must stay off the event
+    loop (same rationale as the projection endpoint)."""
+    return build_heatmap()
 
 
 @app.post("/api/reo/sweep")

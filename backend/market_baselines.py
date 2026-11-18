@@ -186,11 +186,13 @@ def _get_baselines(force_refresh: bool = False) -> Dict:
         return _cache
 
 
-def _lookup_metro(city: Optional[str], state: Optional[str]) -> Optional[Dict]:
-    """Find the baseline entry for the metro matching a city/state
-    search. Exact "City, ST" first, then a same-state metro whose name
-    starts with the city, then (only without a state) any metro
-    starting with the city."""
+def resolve_metro_name(city: Optional[str],
+                       state: Optional[str]) -> Optional[str]:
+    """The Zillow metro region key ("Baltimore, MD") whose baseline
+    covers a city/state search, or None. CITY_METRO_OVERRIDES first
+    (suburbs inside a differently-named metro), then exact "City, ST",
+    then a same-state metro starting with the city, then (only
+    without a state) any metro starting with the city."""
     if not city:
         return None
     city = city.strip().casefold()
@@ -199,25 +201,35 @@ def _lookup_metro(city: Optional[str], state: Optional[str]) -> Optional[Dict]:
 
     override = CITY_METRO_OVERRIDES.get((city, state))
     if override:
-        entry = next(
-            (v for k, v in metros.items()
-             if k.casefold() == override.casefold()), None)
-        if entry:
-            return entry
+        hit = next(
+            (k for k in metros if k.casefold() == override.casefold()),
+            None)
+        if hit:
+            return hit
 
-    exact = f"{city}, {state}" if state else None
-    entry = next(
-        (v for k, v in metros.items() if k.casefold() == exact), None)
-    if entry is None and state:
-        entry = next(
-            (v for k, v in metros.items()
-             if k.casefold().startswith(city + ",")
-             and k.casefold().endswith(", " + state)), None)
-    if entry is None and not state:
-        entry = next(
-            (v for k, v in metros.items()
+    if state:
+        exact = f"{city}, {state}"
+        hit = next(
+            (k for k in metros if k.casefold() == exact), None)
+        if hit is None:
+            hit = next(
+                (k for k in metros
+                 if k.casefold().startswith(city + ",")
+                 and k.casefold().endswith(", " + state)), None)
+    else:
+        hit = next(
+            (k for k in metros
              if k.casefold().startswith(city + ",")), None)
-    return entry
+    return hit
+
+
+def _lookup_metro(city: Optional[str], state: Optional[str]) -> Optional[Dict]:
+    """Baseline entry for the metro matching a city/state search, or
+    None."""
+    name = resolve_metro_name(city, state)
+    if not name:
+        return None
+    return _get_baselines()["metros"].get(name)
 
 
 def get_appreciation(city: Optional[str],
