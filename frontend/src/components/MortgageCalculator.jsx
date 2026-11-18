@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { formatCurrency, formatPercent } from '../lib/format';
 
 const PROPERTY_TYPES = [
   { value: 'primary', label: 'Primary Residence', rateAdjustment: 0 },
@@ -122,15 +123,6 @@ function localQuote(form, downPayment, baseRate) {
     ineligible_reason: eligible ? null
       : `Credit score below ${LOAN_TYPES.find(l => l.value === form.loanType)?.minCredit} minimum`,
   };
-}
-
-function formatCurrency(val) {
-  if (val == null) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-}
-
-function formatPercent(val) {
-  return val == null ? '—' : val.toFixed(2) + '%';
 }
 
 export default function MortgageCalculator({ collapsible = false, defaultExpanded = true }) {

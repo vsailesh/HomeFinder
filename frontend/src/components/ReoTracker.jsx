@@ -1,13 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatCurrency } from '../lib/format';
 
 const SAVED_KEY = 'home-finder:saved-searches';
-
-function formatCurrency(val) {
-  if (val == null) return '—';
-  return '$' + Number(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
 
 function relativeTime(iso) {
   if (!iso) return null;

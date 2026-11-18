@@ -2,11 +2,7 @@
 
 import { useState } from 'react';
 import { ProjectionChart } from './Charts';
-
-function formatCurrency(val) {
-  if (val == null) return '—';
-  return '$' + Number(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
+import { formatCurrency } from '../lib/format';
 
 function gradeClass(grade) {
   const g = (grade || '').replace('+', '-plus').toLowerCase();

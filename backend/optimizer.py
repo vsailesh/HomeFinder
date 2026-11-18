@@ -21,10 +21,18 @@ logger = logging.getLogger(__name__)
 # has no match in Zillow Research data (or the data is unreachable).
 APPRECIATION_ASSUMPTION = 0.035
 
+# Carry/payment assumptions — projection.py imports these so the
+# property card's carry and the 10-yr projection's year-0 carry can
+# never drift apart.
+DOWN_PCT_DEFAULT = 0.20     # down payment share everywhere
+TAX_RATE_DEFAULT = 0.011    # of list/yr when the listing publishes no tax
+INSURANCE_RATE = 0.0035     # of list/yr
 
-def _calculate_monthly_payment(price: float, down_pct: float = 0.20,
-                                rate: Optional[float] = None,
-                                years: int = 30) -> float:
+
+def _calculate_monthly_payment(price: float,
+                               down_pct: float = DOWN_PCT_DEFAULT,
+                               rate: Optional[float] = None,
+                               years: int = 30) -> float:
     """Estimate monthly mortgage payment (P&I only).
 
     Rate is an annual percentage (e.g. 6.85); pulled live from FRED when
@@ -283,8 +291,8 @@ def score_deal(prop: Property, val: ValuationResult,
     # fabricates it — a published $0 is real, only None falls back to
     # ~1.1%/yr of list). Insurance assumed 0.35%/yr of list when unknown.
     annual_tax = (prop.annual_tax if prop.annual_tax is not None
-                  else prop.list_price * 0.011)
-    insurance = prop.list_price * 0.0035 / 12
+                  else prop.list_price * TAX_RATE_DEFAULT)
+    insurance = prop.list_price * INSURANCE_RATE / 12
     hoa = prop.hoa_fee if prop.hoa_fee is not None else 0.0
     carry = round(payment + annual_tax / 12 + insurance + hoa, 2)
     net_cf = round(rent - carry, 2) if rent is not None else None

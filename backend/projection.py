@@ -12,14 +12,12 @@ from typing import Optional
 
 from loan_engine import get_market_base_rate
 from market_baselines import get_metro_baseline, get_zip_rent
-from optimizer import _calculate_monthly_payment, APPRECIATION_ASSUMPTION
+from optimizer import (_calculate_monthly_payment, APPRECIATION_ASSUMPTION,
+                       DOWN_PCT_DEFAULT, INSURANCE_RATE, TAX_RATE_DEFAULT)
 
 logger = logging.getLogger(__name__)
 
-DOWN_PCT = 0.20           # matches the search payment estimate
 RENT_GROWTH = 0.03        # annual rent growth assumption
-INSURANCE_RATE = 0.0035   # of property value per year (matches carry math)
-DEFAULT_TAX_RATE = 0.011  # of list price when the listing publishes no tax
 SELLING_COST = 0.06       # round-trip exit cost, as a share of sale value
 YEARS = 10
 
@@ -58,9 +56,9 @@ def build_projection(list_price: float,
     rate_info = get_market_base_rate()
     rate = rate_info["rate"]
     payment = _calculate_monthly_payment(
-        list_price, down_pct=DOWN_PCT, rate=rate)
-    loan = list_price * (1 - DOWN_PCT)
-    down = list_price * DOWN_PCT
+        list_price, down_pct=DOWN_PCT_DEFAULT, rate=rate)
+    loan = list_price * (1 - DOWN_PCT_DEFAULT)
+    down = list_price * DOWN_PCT_DEFAULT
     monthly_rate = rate / 100 / 12
     n_payments = 30 * 12  # search payment math is fixed at 30yr
 
@@ -82,7 +80,7 @@ def build_projection(list_price: float,
     # A published $0 tax is real (HomeSteps bank-owned deals) — only
     # a missing value falls back to the rate assumption.
     base_tax = (annual_tax if annual_tax is not None
-                else list_price * DEFAULT_TAX_RATE)
+                else list_price * TAX_RATE_DEFAULT)
     hoa = hoa_fee if hoa_fee is not None else 0.0
 
     value0 = estimated_value or list_price
@@ -135,7 +133,7 @@ def build_projection(list_price: float,
         "assumptions": {
             "rate_pct": round(rate, 3),
             "rate_source": rate_info["source"],
-            "down_pct": DOWN_PCT,
+            "down_pct": DOWN_PCT_DEFAULT,
             "down_payment": round(down, 0),
             "monthly_pi": payment,
             "appreciation": appreciation,

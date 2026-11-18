@@ -8,15 +8,11 @@ import PropertyCard from '../components/PropertyCard';
 import CompareTray from '../components/CompareTray';
 import MortgageCalculator from '../components/MortgageCalculator';
 import { PriceDistributionChart, DealScoreChart, ValueVsPriceChart, SqftVsPriceScatter } from '../components/Charts';
+import { formatCurrency } from '../lib/format';
 
 const PAGE_SIZE = 12;
 const COMPARE_KEY = 'home-finder:compare';
 const MAX_COMPARE = 4;
-
-function formatCurrency(val) {
-  if (val == null) return '—';
-  return '$' + Number(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
 
 export default function HomePage() {
   const [specs, setSpecs] = useState(DEFAULT_SPECS);

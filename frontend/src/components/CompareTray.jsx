@@ -1,23 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { formatCurrency, formatSigned, formatPct } from '../lib/format';
 
 const MAX_COMPARE = 4;
-
-function formatCurrency(val) {
-  if (val == null) return '—';
-  return '$' + Number(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
-
-function formatSigned(val, suffix = '') {
-  if (val == null) return '—';
-  return `${val >= 0 ? '+' : ''}${formatCurrency(val).replace('$-', '-$')}${suffix}`;
-}
-
-function formatPct(val, digits = 1) {
-  if (val == null) return '—';
-  return `${val >= 0 ? '+' : ''}${val.toFixed(digits)}%`;
-}
 
 /**
  * Side-by-side shortlist. Deals live in localStorage as full result
