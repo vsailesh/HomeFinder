@@ -15,6 +15,46 @@ const PAGE_SIZE = 12;
 const COMPARE_KEY = 'home-finder:compare';
 const MAX_COMPARE = 4;
 
+// URL <-> search sync: every search is reflected in the address bar
+// (shareable/bookmarkable), and a URL carrying search params runs that
+// search on load. Page numbers stay out — a bookmark should land on
+// page 1 of a fresh search, not a stale offset.
+const NUMERIC_URL_KEYS = new Set([
+  'min_price', 'max_price', 'min_bedrooms', 'max_bedrooms',
+  'min_bathrooms', 'max_bathrooms', 'min_sqft', 'max_sqft',
+  'min_year_built', 'max_year_built', 'max_hoa', 'max_days_on_market',
+  'min_rent_coverage',
+]);
+const URL_KEYS = new Set([
+  'city', 'state', 'county', 'property_type', 'sort_by',
+  'must_have_pool', 'must_have_basement', 'must_have_garage',
+  ...NUMERIC_URL_KEYS,
+]);
+
+export function specsFromUrl() {
+  const out = {};
+  new URLSearchParams(window.location.search).forEach((raw, key) => {
+    if (!URL_KEYS.has(key) || raw === '') return;
+    if (key.startsWith('must_have_')) {
+      if (raw === 'true') out[key] = true;
+    } else if (NUMERIC_URL_KEYS.has(key)) {
+      const n = Number(raw);
+      if (!Number.isNaN(n)) out[key] = n;
+    } else {
+      out[key] = raw;
+    }
+  });
+  return out;
+}
+
+export function toQuery(obj) {
+  const q = new URLSearchParams();
+  Object.entries(obj).forEach(([key, val]) => {
+    if (val !== '' && val !== false && val != null) q.set(key, String(val));
+  });
+  return q;
+}
+
 export default function HomePage() {
   const [specs, setSpecs] = useState(DEFAULT_SPECS);
   const [results, setResults] = useState(null);
@@ -64,12 +104,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      const query = new URLSearchParams();
-      Object.entries(params).forEach(([key, val]) => {
-        if (val !== '' && val !== false && val != null) {
-          query.set(key, String(val));
-        }
-      });
+      const query = toQuery(params);
       query.set('page', String(pageNum));
       query.set('page_size', String(PAGE_SIZE));
       const res = await fetch(`/api/search?${query.toString()}`);
@@ -78,6 +113,14 @@ export default function HomePage() {
       setResults(data);
       setLastParams(params);
       setPage(pageNum);
+      // Reflect the search in the address bar (replaceState — no
+      // history spam while paginating).
+      try {
+        const qs = toQuery(params).toString();
+        window.history.replaceState(null, '', qs ? `/?${qs}` : '/');
+      } catch {
+        // history API blocked — sharing stays off, search unaffected
+      }
     } catch (err) {
       console.error('Search failed:', err);
       setError(err.message || 'Search failed. Is the backend reachable?');
@@ -88,6 +131,16 @@ export default function HomePage() {
 
   const handleSearch = useCallback((params) => {
     runSearch(params, 1);
+  }, [runSearch]);
+
+  // A shared/bookmarked URL (?city=Detroit&max_price=100000) runs
+  // its search on load, form pre-filled to match.
+  useEffect(() => {
+    const fromUrl = specsFromUrl();
+    if (Object.keys(fromUrl).length === 0) return;
+    const merged = { ...DEFAULT_SPECS, ...fromUrl };
+    setSpecs(merged);
+    runSearch(cleanParams(merged), 1);
   }, [runSearch]);
 
   const handleSort = useCallback((newSort) => {

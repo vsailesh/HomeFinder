@@ -16,7 +16,9 @@ Listing sources cascade in order: RapidAPI Zillow (full inventory, needs quota) 
 
 **REO price history** — every sweep records each listing's asks; the inventory API now carries `price_history` per listing (last 12 points), and the tracker panel + property cards render it as a sparkline showing how the bank has been stepping the price down. Hover the sparkline for the full ask ladder.
 
-**Listing permalinks** — every tracked REO listing has a durable page at `/listing/{id}` (SQLite-backed, survives deploys — unlike the in-memory registry behind the valuation endpoint). It shows the tracker's record (first seen, ask ladder, active/gone status) plus the same scored deal card as search results; listings that sold and vanished from HomeSteps stay reachable. The tracker panel's "Analyze ▸" chip links there (`GET /api/reo/listing/{id}`).
+**Listing permalinks** — every tracked REO listing has a durable page at `/listing/{id}` (SQLite-backed, survives deploys — unlike the in-memory registry behind the valuation endpoint). It shows the tracker's record (first seen, ask ladder, active/gone status) plus the same scored deal card as search results; listings that sold and vanished from HomeSteps stay reachable. The tracker panel's "Analyze ▸" chip and the Permalink chip on REO deal cards link there (`GET /api/reo/listing/{id}`).
+
+**Shareable searches** — every search is reflected in the address bar (`/?city=Detroit&max_price=100000&sort_by=cashflow_desc`), so results are bookmarkable and shareable; opening such a URL runs the search with the form pre-filled. Page numbers stay out of the URL on purpose — bookmarks land on a fresh page 1.
 
 **Investor heatmap** — metro vs metro at a glance: what the typical home in each served market costs to carry (P&I + tax + insurance at the live rate, 20% down) versus what it rents for, ranked best cashflow first (`GET /api/market/heatmap`). Suburbs collapse into their metro row (Baltimore + Columbia + Annapolis are one row), active REO inventory joins per metro, and clicking a row runs a search there. Metros without a published rent show "—" and sort last.
 

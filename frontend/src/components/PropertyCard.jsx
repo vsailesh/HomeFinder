@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { ProjectionChart } from './Charts';
 import PriceSpark from './PriceSpark';
 import { formatCurrency } from '../lib/format';
@@ -121,6 +122,15 @@ export default function PropertyCard({
               points={reo_tracker.price_history}
               title={`Asked ${reo_tracker.price_history.map(p => formatCurrency(p.price)).join(' → ')}`}
             />
+          )}
+          {reo_tracker && (
+            <Link
+              className="card-permalink"
+              href={`/listing/${prop.id}`}
+              title="Durable page for this listing — survives even after it leaves HomeSteps"
+            >
+              Permalink
+            </Link>
           )}
           {onToggleCompare && (
             <button

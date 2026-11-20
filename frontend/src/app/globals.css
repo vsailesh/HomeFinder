@@ -2717,3 +2717,12 @@ a.reo-tracker-addr:hover { text-decoration: underline; }
   font-size: 14px;
 }
 .listing-missing h1 { font-size: 18px; color: var(--text-primary, #e2e8f0); }
+
+/* PropertyCard permalink chip (REO deals only) */
+.card-permalink {
+  font-size: 11px;
+  color: var(--accent-primary, #3b82f6);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.card-permalink:hover { text-decoration: underline; }
