@@ -62,6 +62,26 @@ export default function ReoTracker({ onLoadSearch }) {
   const [expanded, setExpanded] = useState(false);
   const [freshIds, setFreshIds] = useState(null); // Set of ids new since last visit
   const [savedSearches, setSavedSearches] = useState([]);
+  // Gone-from-HomeSteps listings (sold or pulled), lazy-fetched on
+  // first archive toggle; null = not loaded yet.
+  const [archive, setArchive] = useState(null);
+  const [showArchive, setShowArchive] = useState(false);
+
+  const toggleArchive = () => {
+    const next = !showArchive;
+    setShowArchive(next);
+    if (next && archive === null) {
+      fetch('/api/reo/inventory?include_inactive=true')
+        .then(res => (res.ok ? res.json() : null))
+        .then(json => {
+          const gone = (json?.listings || [])
+            .filter(l => !l.is_active)
+            .sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen));
+          setArchive(gone);
+        })
+        .catch(() => setArchive([])); // empty archive beats a broken panel
+    }
+  };
 
   useEffect(() => {
     try {
@@ -206,6 +226,49 @@ export default function ReoTracker({ onLoadSearch }) {
               </Link>
             </div>
           ))}
+          <button
+            type="button"
+            className="reo-archive-toggle"
+            onClick={toggleArchive}
+          >
+            📦 Archive — gone from HomeSteps{archive ? ` (${archive.length})` : ''}
+            <span className="market-heatmap-toggle">
+              {showArchive ? '▲' : '▼'}
+            </span>
+          </button>
+          {showArchive && (
+            <div className="reo-archive">
+              {archive === null && (
+                <div className="reo-tracker-empty">Loading archive…</div>
+              )}
+              {archive && archive.length === 0 && (
+                <div className="reo-tracker-empty">
+                  No gone listings tracked yet.
+                </div>
+              )}
+              {archive && archive.slice(0, 20).map(l => (
+                <div key={l.id} className="reo-archive-row">
+                  <span className="reo-tracker-addr">
+                    {l.address}, {l.city}, {l.state}
+                  </span>
+                  <span className="reo-tracker-price">
+                    {formatCurrency(l.list_price)}
+                  </span>
+                  <span className="reo-archive-seen">
+                    last seen {relativeTime(l.last_seen)}
+                  </span>
+                  <Link className="reo-analyze" href={`/listing/${l.id}`}>
+                    Analyze ▸
+                  </Link>
+                </div>
+              ))}
+              {archive && archive.length > 20 && (
+                <div className="reo-tracker-empty">
+                  …and {archive.length - 20} more gone listings.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -5,7 +5,7 @@ import ReoTracker, { matchesSavedSearch } from '../ReoTracker';
 const LISTING = {
   id: 'homesteps-x', address: '1 Main St', city: 'Chicago', state: 'IL',
   zip_code: '60601', list_price: 195000, bedrooms: 3, bathrooms: 2,
-  sqft: 1400, is_new: true, price_cut: false,
+  sqft: 1400, is_new: true, price_cut: false, is_active: true,
   first_seen: new Date(Date.now() - 3600_000).toISOString(),
   last_price_change: null, url: 'https://example.com/x',
   price_history: [
@@ -166,5 +166,37 @@ describe('ReoTracker panel', () => {
       expect(screen.getByRole('button', { name: /REO tracker/ }))
         .toBeInTheDocument());
     expect(screen.queryByText(/since your last visit/)).not.toBeInTheDocument();
+  });
+
+  it('archive toggle loads gone listings with analyze links', async () => {
+    const gone = {
+      ...LISTING, id: 'homesteps-gone', is_active: false,
+      address: '9 Elm St', last_seen: new Date(
+        Date.now() - 3 * 86400_000).toISOString(),
+    };
+    vi.stubGlobal('fetch', vi.fn(url => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(
+        String(url).includes('include_inactive')
+          ? INVENTORY([LISTING, gone])
+          : INVENTORY([LISTING])),
+    })));
+    render(<ReoTracker />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /REO tracker/ }))
+        .toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Freddie Mac REO tracker/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Archive/ }));
+    await waitFor(() =>
+      expect(screen.getByText(/9 Elm St/)).toBeInTheDocument());
+    expect(screen.getByText(/last seen 3d ago/)).toBeInTheDocument();
+    const hrefs = screen.getAllByRole('link', { name: /Analyze/ })
+      .map(a => a.getAttribute('href'));
+    expect(hrefs).toContain('/listing/homesteps-gone');
+    // The active listing stays out of the archive section.
+    const archiveEl = document.querySelector('.reo-archive');
+    expect(archiveEl).toBeTruthy();
+    expect(archiveEl.textContent).not.toContain('1 Main St');
   });
 });
