@@ -14,6 +14,7 @@ import { formatCurrency, formatPercent, formatPct } from '../lib/format';
 export default function MarketHeatmap({ onLoadSearch }) {
   const [data, setData] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [sort, setSort] = useState({ key: 'cashflow', dir: 'desc' });
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +32,38 @@ export default function MarketHeatmap({ onLoadSearch }) {
   if (!data) return null;
 
   const best = data.rows.find(r => r.monthly.cashflow != null);
+
+  // Column sorts (server default: cashflow desc). Unknown values
+  // always sink, whichever way the arrow points.
+  const toggleSort = (key) => setSort(s =>
+    s.key === key
+      ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' }
+      : { key, dir: 'desc' });
+  const SORT_GETTERS = {
+    price_basis: r => r.monthly.price_basis,
+    rent: r => r.typical_rent,
+    payment: r => r.monthly.payment,
+    carry: r => r.monthly.carry,
+    cashflow: r => r.monthly.cashflow,
+    coverage: r => r.monthly.rent_coverage,
+    appreciation: r => r.appreciation_1y,
+    reo: r => r.reo_active,
+  };
+  const get = SORT_GETTERS[sort.key] || SORT_GETTERS.cashflow;
+  const rows = [...data.rows].sort((a, b) => {
+    const va = get(a), vb = get(b);
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return sort.dir === 'asc' ? va - vb : vb - va;
+  });
+  const Th = ({ k, children }) => (
+    <th aria-sort={sort.key === k
+      ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
+      <button type="button" onClick={() => toggleSort(k)}>
+        {children}{sort.key === k ? (sort.dir === 'desc' ? ' ▾' : ' ▴') : ''}
+      </button>
+    </th>
+  );
 
   return (
     <section className="market-heatmap">
@@ -53,18 +86,18 @@ export default function MarketHeatmap({ onLoadSearch }) {
             <thead>
               <tr>
                 <th>Metro</th>
-                <th>Price basis</th>
-                <th>Rent</th>
-                <th>P&amp;I</th>
-                <th>Carry</th>
-                <th>Cashflow</th>
-                <th>Rent/P&amp;I</th>
-                <th>1-yr value</th>
-                <th>REO</th>
+                <Th k="price_basis">Price basis</Th>
+                <Th k="rent">Rent</Th>
+                <Th k="payment">P&amp;I</Th>
+                <Th k="carry">Carry</Th>
+                <Th k="cashflow">Cashflow</Th>
+                <Th k="coverage">Rent/P&amp;I</Th>
+                <Th k="appreciation">1-yr value</Th>
+                <Th k="reo">REO</Th>
               </tr>
             </thead>
             <tbody>
-              {data.rows.map(r => {
+              {rows.map(r => {
                 const cf = r.monthly.cashflow;
                 const cfClass = cf == null ? 'heat-na'
                   : cf > 0 ? 'heat-pos' : 'heat-neg';

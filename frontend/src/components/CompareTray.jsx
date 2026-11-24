@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { formatCurrency, formatSigned, formatPct } from '../lib/format';
 
 const MAX_COMPARE = 4;
@@ -116,6 +117,15 @@ export default function CompareTray({ deals, onRemove, onClear }) {
                         {d.reo_tracker?.is_new && <span className="reo-badge reo-tag-new">NEW</span>}
                         {d.reo_tracker?.price_cut && (
                           <span className="reo-badge reo-tag-cut">CUT {d.reo_tracker.price_change_pct}%</span>
+                        )}
+                        {d.reo_tracker && (
+                          <Link
+                            className="card-permalink"
+                            href={`/listing/${d.property.id}`}
+                            title="Durable page for this listing"
+                          >
+                            Permalink
+                          </Link>
                         )}
                         <button
                           type="button"

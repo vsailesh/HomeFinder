@@ -77,4 +77,25 @@ describe('MarketHeatmap', () => {
     fireEvent.click(screen.getByText('Detroit, MI'));
     expect(onLoadSearch).toHaveBeenCalledWith({ city: 'Detroit', state: 'MI' });
   });
+
+  it('column headers re-sort the table', async () => {
+    mockResponse(BODY);
+    render(<MarketHeatmap />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Investor heatmap/ }))
+        .toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Investor heatmap/ }));
+
+    // Default: cashflow desc — Detroit (+$756) above DC (null).
+    const order = () => Array.from(
+      document.querySelectorAll('.heat-metro')).map(e => e.textContent);
+    expect(order()).toEqual(['Detroit, MI', 'Washington, DC']);
+
+    // Sort by carry desc: DC ($4,015) jumps above Detroit ($594).
+    fireEvent.click(screen.getByRole('button', { name: /Carry/ }));
+    expect(order()).toEqual(['Washington, DC', 'Detroit, MI']);
+    // Same column again flips to ascending.
+    fireEvent.click(screen.getByRole('button', { name: /Carry/ }));
+    expect(order()).toEqual(['Detroit, MI', 'Washington, DC']);
+  });
 });
