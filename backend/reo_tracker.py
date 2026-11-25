@@ -129,10 +129,16 @@ def _age_seconds(iso: Optional[str]) -> Optional[float]:
 def _ensure_schema() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
-        # Older DBs predate the metro column — migrate in place.
+        # Older DBs predate the metro column — migrate in place, and
+        # backfill from the listing's own city: every pre-metro row
+        # was swept under a MARKET_DATA key, and its city usually IS
+        # that key (suburbs are rare). Rows that can't be backfilled
+        # keep metro NULL and pick the tag up on their next sighting.
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
         if "metro" not in cols:
             conn.execute("ALTER TABLE listings ADD COLUMN metro TEXT")
+            conn.execute(
+                "UPDATE listings SET metro = city WHERE metro IS NULL")
 
 
 def last_sweep_info() -> Optional[Dict]:
@@ -417,13 +423,17 @@ def _flags(r, days: int) -> Dict:
     }
 
 
-_PRICE_POINTS_CAP = 12  # points per listing sent to the UI
+_PRICE_POINTS_CAP = 12  # points per listing in bulk responses
 
 
-def _price_histories(conn, ids: List[str]) -> Dict[str, List[Dict]]:
+def _price_histories(conn, ids: List[str],
+                     cap: Optional[int] = _PRICE_POINTS_CAP
+                     ) -> Dict[str, List[Dict]]:
     """Recent price points per listing id, oldest → newest (batched —
     one query per 50 ids, not one per listing). Every sweep has been
-    recording these; the sparkline just surfaces the story."""
+    recording these; the sparkline just surfaces the story. The cap
+    bounds bulk payloads (inventory, search enrichment); the by-id
+    detail endpoint passes cap=None for the complete series."""
     out: Dict[str, List[Dict]] = {}
     for i in range(0, len(ids), 50):  # SQLite param limit
         chunk = ids[i:i + 50]
@@ -434,7 +444,7 @@ def _price_histories(conn, ids: List[str]) -> Dict[str, List[Dict]]:
         for r in rows:
             out.setdefault(r["listing_id"], []).append(
                 {"price": r["price"], "seen_at": r["seen_at"]})
-    return {id_: points[-_PRICE_POINTS_CAP:]
+    return {id_: points[-cap:] if cap else points
             for id_, points in out.items()}
 
 
@@ -492,18 +502,34 @@ def _listing_dict(r, flags: Dict, history: List[Dict]) -> Dict:
     }
 
 
+def get_active_counts_by_metro() -> Dict[str, int]:
+    """{metro: active listing count} for surfaces that only need
+    counts (the investor heatmap). One indexed aggregate — the full
+    inventory report would fetch every row + price point to count
+    them. Metros here are the MARKET_DATA sweep keys; NULL-metro rows
+    (a migration not yet backfilled by a sweep) count under ''."""
+    _ensure_schema()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT metro, COUNT(*) AS n FROM listings "
+            "WHERE is_active = 1 GROUP BY metro").fetchall()
+    return {r["metro"] or "": r["n"] for r in rows}
+
+
 def get_listing_detail(listing_id: str, days: int = 7) -> Optional[Dict]:
     """One tracked listing by id — active or long gone — with flags
-    and its full price history. Durable by-id source: unlike the
-    in-memory property registry, it survives restarts and deploys.
-    None when the id was never swept."""
+    and its complete (uncapped) price history: the permalink page is
+    the durable record. Durable by-id source: unlike the in-memory
+    property registry, it survives restarts and deploys. None when
+    the id was never swept."""
     _ensure_schema()
     with _connect() as conn:
         r = conn.execute(
             "SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
         if r is None:
             return None
-        history = _price_histories(conn, [r["id"]]).get(r["id"], [])
+        history = _price_histories(
+            conn, [r["id"]], cap=None).get(r["id"], [])
     return _listing_dict(r, _flags(r, days), history)
 
 
@@ -539,7 +565,9 @@ def get_inventory(city: Optional[str] = None, days: int = 7,
     for r in rows:
         flags = _flags(r, days)
         if r["is_active"]:
-            metros.add(f'{r["city"]}, {r["state"]}')
+            # The swept metro, not the (often suburb) listing city —
+            # Gwynn Oak and Towson rows are both "Baltimore".
+            metros.add(r["metro"] or f'{r["city"]}, {r["state"]}')
         listings.append(_listing_dict(
             r, flags, histories.get(r["id"], [])))
 

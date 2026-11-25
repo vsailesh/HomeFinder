@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 from models import (Property, SearchSpecs, PropertyType, LoanQuoteRequest,
                     LoanQuoteResponse, ProjectionRequest)
-from optimizer import optimize_search, score_deal
+from optimizer import optimize_search, score_deal_from_property
 from data_pipeline import get_all_cities, get_property_by_id
 from valuation_engine import valuate_property
 from loan_engine import get_market_base_rate, quote_loan
@@ -159,16 +159,10 @@ def reo_listing_detail(listing_id: str):
             url=listing["url"], image_url=listing["image_url"],
             source="homesteps-freddie-mac",
         )
-        baseline = get_metro_baseline(prop.city, prop.state) or {}
-        deal = score_deal(
-            prop,
-            valuate_property(prop),
-            appreciation=baseline.get("appreciation_1y"),
-            metro_rent=baseline.get("typical_rent"),
-            market_heat={k: baseline[k] for k in (
-                "pct_listings_price_cut", "median_days_to_pending",
-                "sale_to_list_ratio") if k in baseline},
-        ).model_dump()
+        # The swept metro tag, not the (often suburb) listing city —
+        # 'Gwynn Oak' resolves to no Zillow metro, 'Baltimore' does.
+        deal = score_deal_from_property(
+            prop, location=listing.get("metro")).model_dump()
     except Exception:
         logger.exception("Listing %s valuation failed — serving the "
                          "tracker record only", listing_id)

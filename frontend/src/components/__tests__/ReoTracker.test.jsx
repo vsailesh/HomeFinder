@@ -144,7 +144,7 @@ describe('ReoTracker panel', () => {
 
   it('flags arrivals older than the 7-day is_new window after a long absence', async () => {
     // Back after 3 weeks: the listing arrived 11 days ago — is_new is
-    // false, but it postdates the last visit, so it still counts.
+    // false, but it postdates the last visit, so it still counts...
     const listing = {
       ...LISTING,
       is_new: false,
@@ -157,6 +157,10 @@ describe('ReoTracker panel', () => {
 
     await waitFor(() =>
       expect(screen.getByText(/🔔 1 since your last visit/)).toBeInTheDocument());
+    // ...and the panel actually RENDERS it, so the count matches the rows.
+    fireEvent.click(screen.getByRole('button', { name: /Freddie Mac REO tracker/ }));
+    expect(screen.getByText(/1 Main St, Chicago/)).toBeInTheDocument();
+    expect(screen.queryByText(/No new or price-cut listings/)).toBeNull();
   });
 
   it('no since-visit callout on first-ever visit', async () => {

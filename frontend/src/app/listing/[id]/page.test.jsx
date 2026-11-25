@@ -67,10 +67,30 @@ describe('ListingPage', () => {
     expect(screen.getByText(/Tracker record only/)).toBeInTheDocument();
   });
 
-  it('renders a not-found page for unknown ids', async () => {
-    mockResponse(false, {});
+  it('renders a not-found page only for genuine 404s', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) })));
     render(<ListingPage />);
     await waitFor(() =>
       expect(screen.getByText('Listing not found')).toBeInTheDocument());
+  });
+
+  it('a 500/network failure is an error state, not "not found"', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })));
+    render(<ListingPage />);
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn't load this listing/))
+        .toBeInTheDocument());
+    expect(screen.queryByText('Listing not found')).toBeNull();
+  });
+
+  it('renders the price cut as a signed percent, not currency', async () => {
+    mockResponse(true, BODY);
+    render(<ListingPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId('deal-card')).toBeInTheDocument());
+    // price_change_pct -7.1 → "-7.1%" (was "+$7%" pre-fix)
+    expect(screen.getByText('-7.1%')).toBeInTheDocument();
   });
 });

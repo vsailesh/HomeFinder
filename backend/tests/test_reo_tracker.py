@@ -518,11 +518,92 @@ def test_listing_detail_endpoint_404_and_valuation_degrades(client, monkeypatch)
     # Valuation blowup still serves the tracker record alone.
     _sweep(_prop())
 
+    import optimizer
     def boom(prop):
         raise RuntimeError("engine down")
 
-    monkeypatch.setattr(main_module, "valuate_property", boom)
+    monkeypatch.setattr(optimizer, "valuate_property", boom)
     r = client.get("/api/reo/listing/homesteps-x")
     assert r.status_code == 200
     assert r.json()["deal"] is None
     assert r.json()["listing"]["id"] == "homesteps-x"
+
+
+def test_listing_detail_scores_with_swept_metro_baseline(client):
+    # Suburb listing: city 'Towson' resolves to no Zillow metro in
+    # the fixture data, but the sweep recorded metro='Baltimore' —
+    # the permalink deal must score against the Baltimore baseline,
+    # not fall to national defaults.
+    towson = Property(
+        id="homesteps-towson", address="2 York Rd",
+        city="Towson", state="MD", zip_code="21204",
+        list_price=199000.0, bedrooms=2, bathrooms=1.0, sqft=1100,
+        property_type=PropertyType.CONDO,
+        url="https://www.homesteps.com/listingdetails/t")
+    rt.run_sweep(force=True, fetcher=lambda city, state:
+                 [towson] if city == "Baltimore" else [])
+
+    # Unresolvable without the metro tag (fixture data has no Towson
+    # metro) — the tag is what makes the baseline reachable.
+    detail = rt.get_listing_detail("homesteps-towson")
+    assert detail["metro"] == "Baltimore"
+
+    r = client.get("/api/reo/listing/homesteps-towson")
+    assert r.status_code == 200
+    deal = r.json()["deal"]
+    assert deal["property"]["city"] == "Towson"
+    # Fixture ZORI publishes a Baltimore, MD rent (1820) and no ZIP
+    # rent — the metro tag must have driven the baseline lookup.
+    assert deal["estimated_rent"] == 1820
+
+
+# --- review fixes: metro counts, uncapped detail, migration backfill ---
+
+def test_metros_with_inventory_counts_swept_metros():
+    # Suburb rows collapse into their sweep metro in the summary.
+    _sweep(_prop(), _prop(pid="homesteps-sub", city="Evanston", state="IL"))
+    assert rt.get_inventory()["summary"]["metros_with_inventory"] == 1
+
+
+def test_listing_detail_history_uncapped():
+    prices = [200000.0 - i * 1000 for i in range(15)]
+    for price in prices:
+        _sweep(_prop(price=price))
+    # Bulk inventory keeps the 12-point bound...
+    assert len(rt.get_inventory()["listings"][0]["price_history"]) == 12
+    # ...but the by-id detail endpoint serves the complete record.
+    detail = rt.get_listing_detail("homesteps-x")
+    assert [p["price"] for p in detail["price_history"]] == prices
+
+
+def test_metro_migration_backfills_from_city(tmp_path, monkeypatch):
+    # Build a pre-metro DB, then let _ensure_schema migrate it.
+    legacy = tmp_path / "legacy.db"
+    monkeypatch.setenv("REO_DB_PATH", str(legacy))
+    with sqlite3.connect(legacy) as conn:
+        conn.execute(
+            "CREATE TABLE listings (id TEXT PRIMARY KEY, address TEXT, "
+            "city TEXT, state TEXT, zip_code TEXT, latitude REAL, "
+            "longitude REAL, list_price REAL, prev_price REAL, "
+            "last_price_change TEXT, first_seen TEXT, last_seen TEXT, "
+            "is_active INTEGER DEFAULT 1, miss_count INTEGER DEFAULT 0, "
+            "bedrooms INTEGER, bathrooms REAL, sqft INTEGER, "
+            "property_type TEXT, year_built INTEGER, url TEXT, "
+            "image_url TEXT)")
+        conn.execute(
+            "INSERT INTO listings (id, address, city, state, zip_code, "
+            "list_price, first_seen, last_seen, is_active) VALUES "
+            "('legacy-1', '1 Main St', 'Chicago', 'IL', '60601', "
+            "199000.0, ?, ?, 1)",
+            (datetime.now(timezone.utc).isoformat(),
+             datetime.now(timezone.utc).isoformat()))
+    detail = rt.get_listing_detail("legacy-1")
+    assert detail["metro"] == "Chicago"  # backfilled from city
+    counts = rt.get_active_counts_by_metro()
+    assert counts == {"Chicago": 1}
+
+
+def test_active_counts_by_metro_group_by():
+    _sweep(_prop(), _prop("homesteps-y", 250000.0))
+    _sweep()  # misses, still active
+    assert rt.get_active_counts_by_metro() == {"Chicago": 2}

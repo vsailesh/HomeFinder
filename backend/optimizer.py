@@ -146,6 +146,30 @@ def _build_risks(prop: Property, val: ValuationResult) -> List[str]:
     return risks if risks else ["No significant risks identified"]
 
 
+def score_deal_from_property(
+        prop: Property,
+        location: Optional[str] = None,
+        state: Optional[str] = None) -> DealScore:
+    """Valuate + score one Property with the metro baseline for its
+    market. `location` should be the MARKET_DATA metro key when the
+    caller has one (REO listings carry the swept metro tag — a
+    suburb city like 'Gwynn Oak' resolves to no Zillow metro);
+    otherwise the property's own city. Single assembly path shared
+    by optimize_search and the by-id REO listing endpoint so the
+    two can't drift. ValuationError propagates — callers decide
+    whether skipping or serving-without-deal is right."""
+    baseline = get_metro_baseline(location or prop.city, state) or {}
+    return score_deal(
+        prop,
+        valuate_property(prop),
+        appreciation=baseline.get("appreciation_1y"),
+        metro_rent=baseline.get("typical_rent"),
+        market_heat={k: baseline[k] for k in (
+            "pct_listings_price_cut", "median_days_to_pending",
+            "sale_to_list_ratio") if k in baseline},
+    )
+
+
 def score_deal(prop: Property, val: ValuationResult,
                appreciation: Optional[float] = None,
                metro_rent: Optional[float] = None,

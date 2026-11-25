@@ -22,6 +22,23 @@ describe('shareable-search URL helpers', () => {
     expect(specsFromUrl()).toEqual({});
   });
 
+  it('drops values the backend would 422 on: fractional ints, negatives, bad enums', () => {
+    window.history.replaceState(null, '',
+      '/?min_bedrooms=2.5&min_rent_coverage=-1&property_type=multifamily'
+      + '&sort_by=bogus&max_price=-500&max_days_on_market=1.5');
+    expect(specsFromUrl()).toEqual({});
+  });
+
+  it('accepts valid enum values and integer bounds', () => {
+    window.history.replaceState(null, '',
+      '/?property_type=multi_family&sort_by=cashflow_desc&min_bedrooms=2'
+      + '&min_rent_coverage=1.25');
+    expect(specsFromUrl()).toEqual({
+      property_type: 'multi_family', sort_by: 'cashflow_desc',
+      min_bedrooms: 2, min_rent_coverage: 1.25,
+    });
+  });
+
   it('toQuery drops empty/false/null and stringifies the rest', () => {
     const q = toQuery({
       city: 'Chicago', state: '', min_price: null, must_have_pool: false,

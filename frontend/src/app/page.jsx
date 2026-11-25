@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import SearchForm, { DEFAULT_SPECS, cleanParams } from '../components/SearchForm';
 import SavedSearches from '../components/SavedSearches';
 import ReoTracker from '../components/ReoTracker';
@@ -25,10 +25,22 @@ const NUMERIC_URL_KEYS = new Set([
   'min_year_built', 'max_year_built', 'max_hoa', 'max_days_on_market',
   'min_rent_coverage',
 ]);
+// Backend declares these as ints (FastAPI 422s on 2.5) — URL values
+// must be whole numbers or the shared link is a dead end.
+const INTEGER_URL_KEYS = new Set([
+  'min_bedrooms', 'max_bedrooms', 'min_sqft', 'max_sqft',
+  'min_year_built', 'max_year_built', 'max_days_on_market',
+]);
 const URL_KEYS = new Set([
   'city', 'state', 'county', 'property_type', 'sort_by',
   'must_have_pool', 'must_have_basement', 'must_have_garage',
   ...NUMERIC_URL_KEYS,
+]);
+const PROPERTY_TYPES = new Set([
+  'single_family', 'condo', 'townhouse', 'multi_family', 'land',
+]);
+const SORT_OPTIONS = new Set([
+  'deal_score', 'price_asc', 'price_desc', 'cashflow_desc', 'newest',
 ]);
 
 export function specsFromUrl() {
@@ -39,7 +51,16 @@ export function specsFromUrl() {
       if (raw === 'true') out[key] = true;
     } else if (NUMERIC_URL_KEYS.has(key)) {
       const n = Number(raw);
-      if (!Number.isNaN(n)) out[key] = n;
+      // Negative values fail backend ge=0 constraints — a mistyped
+      // link degrades to "param ignored", not a 422 banner.
+      if (!Number.isNaN(n) && n >= 0
+          && (!INTEGER_URL_KEYS.has(key) || Number.isInteger(n))) {
+        out[key] = n;
+      }
+    } else if (key === 'property_type') {
+      if (PROPERTY_TYPES.has(raw)) out[key] = raw;
+    } else if (key === 'sort_by') {
+      if (SORT_OPTIONS.has(raw)) out[key] = raw;
     } else {
       out[key] = raw;
     }
@@ -100,7 +121,13 @@ export default function HomePage() {
   const compareIds = new Set(compareDeals.map(d => d.property.id));
   const compareFull = compareDeals.length >= MAX_COMPARE;
 
+  // Sequence token: overlapping searches (a slow first request can
+  // resolve after a newer one) — only the latest request may write
+  // results/params/page/URL, so a stale response can't clobber it.
+  const searchSeq = useRef(0);
+
   const runSearch = useCallback(async (params, pageNum = 1) => {
+    const token = ++searchSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -110,6 +137,7 @@ export default function HomePage() {
       const res = await fetch(`/api/search?${query.toString()}`);
       if (!res.ok) throw new Error(`Search failed (${res.status})`);
       const data = await res.json();
+      if (token !== searchSeq.current) return; // superseded mid-flight
       setResults(data);
       setLastParams(params);
       setPage(pageNum);
@@ -122,10 +150,11 @@ export default function HomePage() {
         // history API blocked — sharing stays off, search unaffected
       }
     } catch (err) {
+      if (token !== searchSeq.current) return; // superseded — bury it
       console.error('Search failed:', err);
       setError(err.message || 'Search failed. Is the backend reachable?');
     } finally {
-      setLoading(false);
+      if (token === searchSeq.current) setLoading(false);
     }
   }, []);
 

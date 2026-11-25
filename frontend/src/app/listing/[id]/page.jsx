@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import PropertyCard from '../../../components/PropertyCard';
 import PriceSpark from '../../../components/PriceSpark';
-import { formatCurrency, formatSigned } from '../../../lib/format';
+import { formatCurrency, formatPct } from '../../../lib/format';
 
 function relativeTime(iso) {
   if (!iso) return '—';
@@ -29,18 +29,29 @@ export default function ListingPage() {
   const params = useParams();
   const [data, setData] = useState(null);
   const [missing, setMissing] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!params?.id) return;
     let cancelled = false;
+    setMissing(false);
+    setFailed(false);
+    setData(null);
     fetch(`/api/reo/listing/${encodeURIComponent(params.id)}`)
-      .then(res => (res.ok ? res.json() : null))
+      .then(res => {
+        // 404 = genuinely unknown id. Anything else (a 500 from a
+        // transient DB error, a blip mid-deploy) is OUR failure, not
+        // the link's — a bookmarked listing must not read as gone.
+        if (res.status === 404) return { __missing: true };
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then(json => {
         if (cancelled) return;
-        if (json) setData(json);
-        else setMissing(true);
+        if (json?.__missing) setMissing(true);
+        else setData(json);
       })
-      .catch(() => { if (!cancelled) setMissing(true); });
+      .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, [params?.id]);
 
@@ -52,6 +63,19 @@ export default function ListingPage() {
           <h1>Listing not found</h1>
           <p>No tracked REO listing with this id — it may predate the
             tracker or the link is wrong.</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (failed) {
+    return (
+      <main className="listing-page">
+        <Link className="listing-back" href="/">← Home Finder</Link>
+        <div className="listing-missing">
+          <h1>Couldn&apos;t load this listing</h1>
+          <p>The backend is unreachable or erroring — try refreshing.
+            The listing itself may be fine.</p>
         </div>
       </main>
     );
@@ -85,7 +109,7 @@ export default function ListingPage() {
           )}
           {l.price_change_pct != null && (
             <span className="listing-cut">
-              {formatSigned(-l.price_change_pct)}%
+              {formatPct(l.price_change_pct)}
             </span>
           )}
         </div>

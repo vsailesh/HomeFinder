@@ -133,7 +133,11 @@ export default function ReoTracker({ onLoadSearch }) {
 
   const { summary, last_sweep: lastSweep } = data;
   const swept = relativeTime(lastSweep?.finished_at);
-  const flagged = (data.listings || []).filter(l => l.is_new || l.price_cut);
+  // Rows shown: this-week movers (is_new/price_cut) PLUS anything
+  // fresh since the visitor's last session — the 🔔 count must
+  // never promise listings the panel doesn't display.
+  const flagged = (data.listings || []).filter(
+    l => l.is_new || l.price_cut || freshIds?.has(l.id));
   const freshCount = freshIds ? freshIds.size : 0;
 
   // Saved searches × active REO inventory (client-side; the tracker
@@ -187,7 +191,8 @@ export default function ReoTracker({ onLoadSearch }) {
           )}
           {flagged.length === 0 && (
             <div className="reo-tracker-empty">
-              No new or price-cut listings in the last {data.window_days} days.
+              No new or price-cut listings in the last {data.window_days} days
+              — and nothing new since your last visit.
             </div>
           )}
           {flagged.map(l => (

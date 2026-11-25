@@ -25,18 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 def _reo_active_by_metro() -> Dict[str, int]:
-    """{lowercase served-city name: active tracked REO count}. The
-    tracker stores each listing under the MARKET_DATA key it was
-    swept with, so counts join on served city names, not Zillow
-    metro names. Tracker failures just zero out the column."""
+    """{served-city name: active tracked REO count}. The tracker
+    stores each listing under the MARKET_DATA key it was swept with,
+    so counts join on served city names, not Zillow metro names.
+    Tracker failures just zero out the column."""
     try:
         import reo_tracker
-        counts: Dict[str, int] = {}
-        for listing in reo_tracker.get_inventory().get("listings", []):
-            if listing.get("is_active") and listing.get("metro"):
-                key = str(listing["metro"]).strip().casefold()
-                counts[key] = counts.get(key, 0) + 1
-        return counts
+        return {str(k).strip().casefold(): int(v)
+                for k, v in reo_tracker.get_active_counts_by_metro().items()}
     except Exception:
         logger.exception("REO inventory join failed — heatmap continues")
         return {}

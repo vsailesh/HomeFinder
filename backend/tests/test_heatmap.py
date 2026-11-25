@@ -74,18 +74,18 @@ def test_reo_count_joins_and_tracker_failure_never_breaks():
     assert balt["reo_active"] == 1
 
     # Tracker blowup zeroes the column, never the heatmap.
-    orig = rt.get_inventory
+    orig = rt.get_active_counts_by_metro
 
-    def boom(**kwargs):
+    def boom():
         raise RuntimeError("db gone")
 
-    rt.get_inventory = boom
+    rt.get_active_counts_by_metro = boom
     try:
         balt = next(r for r in hm.build_heatmap()["rows"]
                     if r["metro"] == "Baltimore, MD")
         assert balt["reo_active"] == 0
     finally:
-        rt.get_inventory = orig
+        rt.get_active_counts_by_metro = orig
 
 
 def test_endpoint_shape(client):
