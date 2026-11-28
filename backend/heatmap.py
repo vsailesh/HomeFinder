@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+import reo_tracker
 from data_pipeline import get_all_cities
 from loan_engine import get_market_base_rate
 from market_baselines import get_baselines_snapshot, resolve_metro_name
@@ -30,7 +31,6 @@ def _reo_active_by_metro() -> Dict[str, int]:
     so counts join on served city names, not Zillow metro names.
     Tracker failures just zero out the column."""
     try:
-        import reo_tracker
         return {str(k).strip().casefold(): int(v)
                 for k, v in reo_tracker.get_active_counts_by_metro().items()}
     except Exception:

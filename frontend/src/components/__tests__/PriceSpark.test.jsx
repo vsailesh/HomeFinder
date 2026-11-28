@@ -38,10 +38,16 @@ describe('PriceSpark', () => {
     expect(flat.querySelector('path').getAttribute('d')).toContain(','); // straight line
   });
 
-  it('carries the ask ladder in the svg title when provided', () => {
-    const { container } = render(
-      <PriceSpark points={PTS} title="Asked $199,000 → $189,000 → $179,000" />);
+  it('self-titles with the full ask ladder when no title is given', () => {
+    const { container } = render(<PriceSpark points={PTS} />);
     expect(container.querySelector('title').textContent)
-      .toContain('$179,000');
+      .toBe('Asked $199,000 → $189,000 → $179,000');
+  });
+
+  it('an explicit title overrides the ask-ladder default', () => {
+    const { container } = render(
+      <PriceSpark points={PTS} title="custom hover text" />);
+    expect(container.querySelector('title').textContent)
+      .toBe('custom hover text');
   });
 });

@@ -118,10 +118,7 @@ export default function PropertyCard({
             </span>
           )}
           {reo_tracker?.price_history?.length > 1 && (
-            <PriceSpark
-              points={reo_tracker.price_history}
-              title={`Asked ${reo_tracker.price_history.map(p => formatCurrency(p.price)).join(' → ')}`}
-            />
+            <PriceSpark points={reo_tracker.price_history} />
           )}
           {reo_tracker && (
             <Link

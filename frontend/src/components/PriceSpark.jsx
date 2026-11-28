@@ -1,11 +1,17 @@
+import { formatCurrency } from '../lib/format';
+
 /**
  * Tiny inline SVG price-trend sparkline for REO listings — the sweep
  * records every price change, and this shows the negotiation story at
  * a glance (bank-owned inventory often walks down in steps). Renders
- * nothing when there isn't a trend to show (< 2 points).
+ * nothing when there isn't a trend to show (< 2 points). The default
+ * hover title is the full ask ladder — callers only override for a
+ * reason.
  */
 export default function PriceSpark({ points = [], width = 84, height = 22,
                                      title = null }) {
+  const ladder = (points || [])
+    .map(p => formatCurrency(p.price)).join(' → ');
   if (!points || points.length < 2) return null;
 
   const prices = points.map(p => Number(p.price)).filter(n => !Number.isNaN(n));
@@ -36,7 +42,7 @@ export default function PriceSpark({ points = [], width = 84, height = 22,
       role="img"
       aria-label={`Price trend ${trend} ${overall}% over ${points.length} recorded prices`}
     >
-      {title && <title>{title}</title>}
+      <title>{title || `Asked ${ladder}`}</title>
       <path d={path} />
       <circle cx={lastX.toFixed(1)} cy={lastY.toFixed(1)} r="2" />
     </svg>

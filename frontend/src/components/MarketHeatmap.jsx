@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { formatCurrency, formatPercent, formatPct } from '../lib/format';
+import { formatCurrency, formatFraction, formatPercent } from '../lib/format';
 
 /**
  * Investor heatmap — every served metro's typical home, side by
@@ -128,11 +128,7 @@ export default function MarketHeatmap({ onLoadSearch }) {
                         ? `${r.monthly.rent_coverage}×`
                         : '—'}
                     </td>
-                    <td>
-                      {r.appreciation_1y != null
-                        ? formatPct(r.appreciation_1y * 100)
-                        : '—'}
-                    </td>
+                    <td>{formatFraction(r.appreciation_1y)}</td>
                     <td>{r.reo_active > 0 ? r.reo_active : '—'}</td>
                   </tr>
                 );

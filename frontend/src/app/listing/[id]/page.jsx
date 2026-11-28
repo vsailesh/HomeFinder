@@ -5,18 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import PropertyCard from '../../../components/PropertyCard';
 import PriceSpark from '../../../components/PriceSpark';
-import { formatCurrency, formatPct } from '../../../lib/format';
-
-function relativeTime(iso) {
-  if (!iso) return '—';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms)) return '—';
-  const days = Math.floor(ms / 86400_000);
-  if (days >= 1) return `${days}d ago`;
-  const hours = Math.floor(ms / 3600_000);
-  if (hours >= 1) return `${hours}h ago`;
-  return `${Math.max(1, Math.round(ms / 60_000))}m ago`;
-}
+import { formatCurrency, formatPct, relativeTime } from '../../../lib/format';
 
 /**
  * Permalink page for a tracked REO listing — durable by id (the
@@ -114,14 +103,11 @@ export default function ListingPage() {
           )}
         </div>
         <div className="listing-meta-row listing-meta-dim">
-          <span>First seen {relativeTime(l.first_seen)}</span>
-          <span>Last swept {relativeTime(l.last_seen)}</span>
+          <span>First seen {relativeTime(l.first_seen) || '—'}</span>
+          <span>Last swept {relativeTime(l.last_seen) || '—'}</span>
           <span>Swept under {l.metro || l.city}</span>
           {(l.price_history || []).length > 1 && (
-            <PriceSpark
-              points={l.price_history}
-              title={`Asked ${ladder.join(' → ')}`}
-            />
+            <PriceSpark points={l.price_history} />
           )}
           {l.url && (
             <a href={l.url} target="_blank" rel="noopener noreferrer">

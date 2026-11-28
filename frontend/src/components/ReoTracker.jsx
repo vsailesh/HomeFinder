@@ -3,20 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PriceSpark from './PriceSpark';
-import { formatCurrency } from '../lib/format';
+import { formatCurrency, relativeTime } from '../lib/format';
 
 const SAVED_KEY = 'home-finder:saved-searches';
-
-function relativeTime(iso) {
-  if (!iso) return null;
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms)) return null;
-  const mins = Math.round(ms / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 48) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
 
 /**
  * Does a tracker listing satisfy a saved search's criteria? Only the
@@ -222,10 +211,7 @@ export default function ReoTracker({ onLoadSearch }) {
                 )}
                 {formatCurrency(l.list_price)}
               </span>
-              <PriceSpark
-                points={l.price_history}
-                title={`Asked ${(l.price_history || []).map(p => formatCurrency(p.price)).join(' → ')}`}
-              />
+              <PriceSpark points={l.price_history} />
               <Link className="reo-analyze" href={`/listing/${l.id}`}>
                 Analyze ▸
               </Link>
